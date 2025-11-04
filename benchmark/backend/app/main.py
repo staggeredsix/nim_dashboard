@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import create_all
+from .model_registry import ModelRegistryService
 from .schemas import (
     AutoBenchmarkRequest,
     BackendMetadata,
@@ -16,6 +17,13 @@ from .schemas import (
     BenchmarkRunResponse,
     BenchmarkProvider,
     ErrorResponse,
+    HuggingFaceDownloadRequest,
+    HuggingFaceSearchRequest,
+    ModelActionResponse,
+    ModelListResponse,
+    NimPullRequest,
+    NimSearchRequest,
+    OllamaPullRequest,
     PaginatedBenchmarkHistory,
 )
 from .service import BenchmarkService
@@ -32,6 +40,7 @@ app.add_middleware(
 )
 
 service = BenchmarkService()
+model_registry = ModelRegistryService(settings=settings)
 
 
 def get_service() -> BenchmarkService:
@@ -148,3 +157,36 @@ async def auto_benchmark(
             )
         )
     return history_items
+
+
+@app.get("/api/models/ollama", response_model=ModelListResponse)
+async def list_ollama_models(base_url: str | None = None) -> ModelListResponse:
+    models = await model_registry.list_ollama_models(base_url=base_url)
+    return ModelListResponse(provider=BenchmarkProvider.OLLAMA, models=models)
+
+
+@app.post("/api/models/ollama/pull", response_model=ModelActionResponse)
+async def pull_ollama_model(request: OllamaPullRequest) -> ModelActionResponse:
+    return await model_registry.pull_ollama_model(request)
+
+
+@app.post("/api/models/nim/search", response_model=ModelListResponse)
+async def search_nim_models(request: NimSearchRequest) -> ModelListResponse:
+    models = await model_registry.search_nim_models(request)
+    return ModelListResponse(provider=BenchmarkProvider.NIM, models=models)
+
+
+@app.post("/api/models/nim/pull", response_model=ModelActionResponse)
+async def pull_nim_model(request: NimPullRequest) -> ModelActionResponse:
+    return await model_registry.pull_nim_model(request)
+
+
+@app.post("/api/models/huggingface/search", response_model=ModelListResponse)
+async def search_huggingface_models(request: HuggingFaceSearchRequest) -> ModelListResponse:
+    models = await model_registry.search_huggingface_models(request)
+    return ModelListResponse(provider=BenchmarkProvider.VLLM, models=models)
+
+
+@app.post("/api/models/huggingface/download", response_model=ModelActionResponse)
+async def download_huggingface_model(request: HuggingFaceDownloadRequest) -> ModelActionResponse:
+    return await model_registry.download_huggingface_model(request)
