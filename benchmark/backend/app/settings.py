@@ -29,6 +29,7 @@ class Settings:
     ollama_base_url: str = field(default="http://localhost:11434")
     vllm_base_url: str = field(default="http://localhost:8000")
     nim_base_url: str = field(default="http://localhost:8001")
+    llamacpp_base_url: str = field(default="http://localhost:8080")
 
     ngc_api_key: Optional[str] = field(default=None)
     hf_api_key: Optional[str] = field(default=None)
@@ -48,6 +49,7 @@ class Settings:
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
             vllm_base_url=os.getenv("VLLM_BASE_URL", "http://localhost:8000"),
             nim_base_url=os.getenv("NIM_BASE_URL", "http://localhost:8001"),
+            llamacpp_base_url=os.getenv("LLAMACPP_BASE_URL", "http://localhost:8080"),
             ngc_api_key=os.getenv("NGC_API_KEY"),
             hf_api_key=os.getenv("HF_API_KEY"),
             model_cache_dir=os.getenv("MODEL_CACHE_DIR", "./data/models"),

@@ -62,8 +62,8 @@ export default function App() {
           </div>
           <h1 className="text-3xl font-semibold">Benchmark orchestration dashboard</h1>
           <p className="max-w-3xl text-sm text-slate-400">
-            Configure and launch benchmarks across NVIDIA NIM, vLLM, and Ollama backends. Track latency, throughput, and
-            tuning parameters in a single control plane.
+            Configure and launch benchmarks across NVIDIA NIM, vLLM, Ollama, and llama.cpp backends. Track latency,
+            throughput, and tuning parameters in a single control plane.
           </p>
         </header>
 
