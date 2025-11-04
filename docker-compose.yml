@@ -3,8 +3,8 @@ version: '3.9'
 services:
   backend:
     build:
-      context: ./benchmark/backend
-      dockerfile: Dockerfile
+      context: ./benchmark
+      dockerfile: backend/Dockerfile
     image: nim-benchmark-backend:latest
     ports:
       - "8000:8000"

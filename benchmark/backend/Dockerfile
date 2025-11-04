@@ -9,10 +9,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential curl git \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy shared benchmark requirements alongside backend-specific ones so the
+# relative include in backend/requirements.txt keeps working inside the image.
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+COPY backend/requirements.txt /app/backend/requirements.txt
+RUN pip install --no-cache-dir -r backend/requirements.txt
 
-COPY app /app/app
+COPY backend/app /app/app
 
 EXPOSE 8000
 
