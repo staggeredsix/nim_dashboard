@@ -19,9 +19,14 @@ class LlamaCppClient(BackendClient):
             "n_predict": self.parameters.max_tokens,
             "temperature": self.parameters.temperature,
             "top_p": self.parameters.top_p,
-            "stream": self.parameters.stream,
             "repeat_penalty": self.parameters.repetition_penalty,
         }
+
+        # The llama.cpp HTTP server emits an NDJSON stream when ``stream=True``.
+        # Streaming responses require parsing chunked payloads, which this
+        # client does not currently support, so force streaming off to avoid
+        # JSON decode errors when calling ``response.json()`` below.
+        payload["stream"] = False
 
         async def _send() -> Dict[str, Any]:
             response = await client.post(url, json=payload, timeout=self.timeout)
