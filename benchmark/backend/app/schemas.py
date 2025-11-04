@@ -1,0 +1,98 @@
+"""Pydantic schemas for API payloads."""
+from __future__ import annotations
+
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field, HttpUrl, PositiveInt, conint
+
+
+class BenchmarkProvider(str, Enum):
+    OLLAMA = "ollama"
+    NIM = "nim"
+    VLLM = "vllm"
+
+
+class BackendMetadata(BaseModel):
+    name: str
+    provider: BenchmarkProvider
+    default_base_url: HttpUrl
+    description: str
+    parameters: Dict[str, Any]
+
+
+class BenchmarkParameters(BaseModel):
+    request_count: PositiveInt = Field(default=20)
+    concurrency: conint(ge=1, le=256) = Field(default=4)
+    warmup_requests: conint(ge=0, le=100) = Field(default=2)
+    max_tokens: PositiveInt = Field(default=512)
+    temperature: float = Field(default=0.2, ge=0.0, le=2.0)
+    top_p: float = Field(default=0.9, ge=0.0, le=1.0)
+    repetition_penalty: float = Field(default=1.0, ge=0.0)
+    stream: bool = Field(default=True)
+    timeout: float = Field(default=120.0, gt=0)
+
+
+class BackendSpecificParameters(BaseModel):
+    nim_model_name: Optional[str] = Field(
+        default=None,
+        description="Override for the deployed NIM model identifier.",
+    )
+    ollama_keep_alive: Optional[str] = Field(default="5m")
+    vllm_best_of: Optional[int] = Field(default=1)
+    vllm_use_beam_search: Optional[bool] = Field(default=False)
+
+
+class BenchmarkRequest(BaseModel):
+    provider: BenchmarkProvider
+    model_name: str
+    base_url: Optional[HttpUrl] = None
+    prompt: str = Field(default="Explain the significance of GPUs for LLM inference.")
+    parameters: BenchmarkParameters = Field(default_factory=BenchmarkParameters)
+    backend_parameters: BackendSpecificParameters = Field(default_factory=BackendSpecificParameters)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class AutoBenchmarkRequest(BaseModel):
+    provider: BenchmarkProvider
+    model_name: str
+    prompt: str
+    base_url: Optional[HttpUrl] = None
+    sweep_concurrency: List[int] = Field(default_factory=lambda: [1, 2, 4])
+    sweep_max_tokens: List[int] = Field(default_factory=lambda: [256, 512])
+    sweep_temperature: List[float] = Field(default_factory=lambda: [0.1, 0.5])
+    parameters: BenchmarkParameters = Field(default_factory=BenchmarkParameters)
+    backend_parameters: BackendSpecificParameters = Field(default_factory=BackendSpecificParameters)
+
+
+class BenchmarkRunResponse(BaseModel):
+    id: int
+    status: str
+
+
+class BenchmarkResult(BaseModel):
+    run_id: int
+    provider: BenchmarkProvider
+    model_name: str
+    parameters: Dict[str, Any]
+    metrics: Dict[str, Any]
+
+
+class BenchmarkHistoryItem(BaseModel):
+    id: int
+    provider: BenchmarkProvider
+    model_name: str
+    status: str
+    created_at: str
+    completed_at: Optional[str]
+    metrics: Optional[Dict[str, Any]]
+    error: Optional[str]
+
+
+class PaginatedBenchmarkHistory(BaseModel):
+    runs: List[BenchmarkHistoryItem]
+    total: int
+
+
+class ErrorResponse(BaseModel):
+    detail: str
