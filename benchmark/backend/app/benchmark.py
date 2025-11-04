@@ -33,6 +33,11 @@ class BenchmarkExecutor:
 
     def _create_client(self) -> BackendClient:
         base_url = self.request.base_url or self._default_base_url()
+        api_key: str | None = None
+        if self.request.provider == self.request.provider.NIM:
+            api_key = settings.ngc_api_key
+        elif self.request.provider == self.request.provider.LLAMACPP:
+            api_key = settings.llamacpp_api_key
         return create_client(
             self.request.provider,
             base_url=base_url,
@@ -40,7 +45,7 @@ class BenchmarkExecutor:
             parameters=self.request.parameters,
             backend_parameters=self.request.backend_parameters,
             timeout=self.timeout,
-            ngc_api_key=settings.ngc_api_key,
+            api_key=api_key,
         )
 
     def _default_base_url(self) -> str:
