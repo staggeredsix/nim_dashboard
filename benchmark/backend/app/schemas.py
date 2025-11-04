@@ -4,7 +4,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, HttpUrl, PositiveInt, conint
+from pydantic import AnyHttpUrl, BaseModel, Field, PositiveInt, conint
 
 
 class BenchmarkProvider(str, Enum):
@@ -16,7 +16,7 @@ class BenchmarkProvider(str, Enum):
 class BackendMetadata(BaseModel):
     name: str
     provider: BenchmarkProvider
-    default_base_url: HttpUrl
+    default_base_url: AnyHttpUrl
     description: str
     parameters: Dict[str, Any]
 
@@ -46,7 +46,7 @@ class BackendSpecificParameters(BaseModel):
 class BenchmarkRequest(BaseModel):
     provider: BenchmarkProvider
     model_name: str
-    base_url: Optional[HttpUrl] = None
+    base_url: Optional[AnyHttpUrl] = None
     prompt: str = Field(default="Explain the significance of GPUs for LLM inference.")
     parameters: BenchmarkParameters = Field(default_factory=BenchmarkParameters)
     backend_parameters: BackendSpecificParameters = Field(default_factory=BackendSpecificParameters)
@@ -57,7 +57,7 @@ class AutoBenchmarkRequest(BaseModel):
     provider: BenchmarkProvider
     model_name: str
     prompt: str
-    base_url: Optional[HttpUrl] = None
+    base_url: Optional[AnyHttpUrl] = None
     sweep_concurrency: List[int] = Field(default_factory=lambda: [1, 2, 4])
     sweep_max_tokens: List[int] = Field(default_factory=lambda: [256, 512])
     sweep_temperature: List[float] = Field(default_factory=lambda: [0.1, 0.5])
@@ -115,7 +115,7 @@ class ModelListResponse(BaseModel):
 
 class OllamaPullRequest(BaseModel):
     model_name: str
-    base_url: Optional[HttpUrl] = None
+    base_url: Optional[AnyHttpUrl] = None
     stream: bool = Field(default=False)
 
 
