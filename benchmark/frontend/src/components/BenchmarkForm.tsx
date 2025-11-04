@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, InputHTMLAttributes, useMemo, useState } from 'react';
 import { GaugeCircle, Play, SlidersHorizontal } from 'lucide-react';
 
 export interface BackendMetadata {
@@ -302,5 +302,35 @@ export function BenchmarkForm({ backends, isSubmitting, onSubmit }: Props) {
       },
     }));
   }
+}
+
+interface NumberFieldProps
+  extends Pick<InputHTMLAttributes<HTMLInputElement>, 'min' | 'max' | 'step'> {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}
+
+function NumberField({ label, value, onChange, min, max, step }: NumberFieldProps) {
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const { value: rawValue } = event.target;
+    const numericValue = rawValue === '' ? Number.NaN : Number(rawValue);
+    onChange(Number.isNaN(numericValue) ? 0 : numericValue);
+  };
+
+  return (
+    <label className="flex flex-col gap-2 text-sm text-slate-300">
+      {label}
+      <input
+        type="number"
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onChange={handleChange}
+        className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+      />
+    </label>
+  );
 }
 
