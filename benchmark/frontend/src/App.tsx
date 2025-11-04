@@ -99,7 +99,7 @@ export default function App() {
         {backendsQuery.data && backendsQuery.data.length > 0 && (
           <BenchmarkForm
             backends={backendsQuery.data}
-            isSubmitting={scheduleBenchmark.isLoading}
+            isSubmitting={scheduleBenchmark.isPending}
             onSubmit={handleSubmit}
           />
         )}
