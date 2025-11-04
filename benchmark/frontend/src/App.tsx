@@ -4,45 +4,22 @@ import { Loader2, ServerCog } from 'lucide-react';
 
 import { BenchmarkForm, BenchmarkFormState, BackendMetadata } from './components/BenchmarkForm';
 import { BenchmarkHistory, BenchmarkHistoryItem } from './components/BenchmarkHistory';
+import { ModelManager } from './components/ModelManager';
 import { SummaryCards } from './components/SummaryCards';
-
-const API_BASE = import.meta.env.VITE_API_BASE ?? '';
-
-async function fetchJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`);
-  if (!response.ok) {
-    throw new Error(`Request failed: ${response.statusText}`);
-  }
-  return (await response.json()) as T;
-}
-
-async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(error.detail ?? 'Unknown error');
-  }
-  return (await response.json()) as T;
-}
+import { getJson, postJson } from './lib/api';
 
 export default function App() {
   const queryClient = useQueryClient();
 
   const backendsQuery = useQuery<BackendMetadata[]>({
     queryKey: ['backends'],
-    queryFn: () => fetchJson('/api/backends'),
+    queryFn: () => getJson('/api/backends'),
     staleTime: 10 * 60 * 1000,
   });
 
   const historyQuery = useQuery<{ runs: BenchmarkHistoryItem[]; total: number }>({
     queryKey: ['benchmarks'],
-    queryFn: () => fetchJson('/api/benchmarks'),
+    queryFn: () => getJson('/api/benchmarks'),
     refetchInterval: 5000,
   });
 
@@ -95,6 +72,8 @@ export default function App() {
           lastLatency={latestRun?.metrics?.latency_p95_ms ?? undefined}
           lastTps={latestRun?.metrics?.tokens_per_second ?? undefined}
         />
+
+        <ModelManager backends={backendsQuery.data ?? []} />
 
         {backendsQuery.data && backendsQuery.data.length > 0 && (
           <BenchmarkForm

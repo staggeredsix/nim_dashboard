@@ -31,6 +31,8 @@ class Settings:
     nim_base_url: str = field(default="http://localhost:8001")
 
     ngc_api_key: Optional[str] = field(default=None)
+    hf_api_key: Optional[str] = field(default=None)
+    model_cache_dir: str = field(default="./data/models")
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -47,6 +49,8 @@ class Settings:
             vllm_base_url=os.getenv("VLLM_BASE_URL", "http://localhost:8000"),
             nim_base_url=os.getenv("NIM_BASE_URL", "http://localhost:8001"),
             ngc_api_key=os.getenv("NGC_API_KEY"),
+            hf_api_key=os.getenv("HF_API_KEY"),
+            model_cache_dir=os.getenv("MODEL_CACHE_DIR", "./data/models"),
         )
 
 

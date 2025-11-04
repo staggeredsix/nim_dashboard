@@ -10,6 +10,7 @@ backend that orchestrates load tests and a Vite + React dashboard for monitoring
 - SQLite-backed history with REST endpoints for scheduling and tracking runs
 - Auto-benchmark sweeps for quickly exploring concurrency, token, and temperature combinations
 - React dashboard featuring backend selectors, parameter knobs, and live history updates
+- Built-in model management for Ollama, NVIDIA NIM, and Hugging Face checkpoints
 - Containerised deployment (Dockerfiles + `docker-compose.yml`) with multi-architecture build script
 - Start and deploy helper scripts for local development or CI pipelines
 
@@ -81,6 +82,21 @@ Submit a POST request to `/api/benchmarks/auto` with the following payload shape
 ```
 
 The endpoint returns a list of completed runs with metrics for each combination.
+
+### Model management endpoints
+
+The API exposes helper endpoints so you can pull and inspect model assets directly from the dashboard:
+
+| Endpoint | Description |
+| --- | --- |
+| `GET /api/models/ollama` | List models currently installed on an Ollama host. Optional `base_url` overrides the default target. |
+| `POST /api/models/ollama/pull` | Trigger an Ollama pull operation for the requested model name. |
+| `POST /api/models/nim/search` | Query the NVIDIA NGC catalog for NIM deployments (requires an NGC API key). |
+| `POST /api/models/nim/pull` | Run `docker pull` against `nvcr.io` using the supplied NGC API key. |
+| `POST /api/models/huggingface/search` | Search the Hugging Face model hub using an optional HF API token. |
+| `POST /api/models/huggingface/download` | Download a gated model snapshot into the backend's model cache directory. |
+
+Supply API keys in the request body when required. The frontend surfaces these flows under the new "Model management" section.
 
 ## Testing
 

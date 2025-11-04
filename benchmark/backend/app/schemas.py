@@ -96,3 +96,56 @@ class PaginatedBenchmarkHistory(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+class ModelInfo(BaseModel):
+    """Describes a model known to a provider registry."""
+
+    name: str
+    size: Optional[str] = None
+    digest: Optional[str] = None
+    description: Optional[str] = None
+    version: Optional[str] = None
+
+
+class ModelListResponse(BaseModel):
+    provider: BenchmarkProvider
+    models: List[ModelInfo]
+
+
+class OllamaPullRequest(BaseModel):
+    model_name: str
+    base_url: Optional[HttpUrl] = None
+    stream: bool = Field(default=False)
+
+
+class NimSearchRequest(BaseModel):
+    api_key: Optional[str] = None
+    query: Optional[str] = Field(default=None, description="Filter models by a search term.")
+    limit: conint(ge=1, le=200) = Field(default=25)
+    organization: str = Field(default="nvidia", description="NGC organization to inspect.")
+
+
+class NimPullRequest(BaseModel):
+    model_name: str = Field(description="Container image name, e.g. nvcr.io/nim/llama2-13b.")
+    tag: Optional[str] = Field(default="latest")
+    api_key: Optional[str] = None
+
+
+class HuggingFaceSearchRequest(BaseModel):
+    api_key: Optional[str] = None
+    query: Optional[str] = Field(default=None, description="Free-text search expression")
+    limit: conint(ge=1, le=100) = Field(default=20)
+
+
+class HuggingFaceDownloadRequest(BaseModel):
+    model_id: str
+    api_key: Optional[str] = None
+    revision: Optional[str] = None
+    local_dir: Optional[str] = Field(default=None, description="Override the download destination directory")
+
+
+class ModelActionResponse(BaseModel):
+    status: str
+    detail: str
+    metadata: Optional[Dict[str, Any]] = None
