@@ -313,241 +313,250 @@ export function ModelManager({ backends }: Props) {
   }
 
   return (
-    <section className="grid gap-4 xl:grid-cols-3">
-      <ProviderCard
-        title="Runtime control center"
-        icon={<Play className="h-5 w-5 text-nvidia" />}
-        description="Start or stop tracked models across your inference backends."
-      >
-        <div className="space-y-4 text-sm">
-          {runtimeProviders.map(({ key, label, modelPlaceholder, basePlaceholder }) => (
-            <RuntimeControlRow
-              key={key}
-              label={label}
-              input={runtimeInputs[key]}
-              modelPlaceholder={modelPlaceholder}
-              basePlaceholder={basePlaceholder}
-              onChange={(value) =>
-                setRuntimeInputs((prev) => ({
-                  ...prev,
-                  [key]: value,
-                }))
-              }
-              onStart={() => handleStart(key)}
-              onStop={() => handleStop(key)}
-              isStarting={isStarting(key)}
-              isStopping={isStopping(key)}
-              message={runtimeMessages[key]}
-              runningModels={getRunningModels(key)}
-            />
-          ))}
-          {runtimeQuery.isError && (
-            <p className="text-xs text-amber-400">
-              {runtimeQuery.error instanceof Error
-                ? runtimeQuery.error.message
-                : 'Unable to load runtime status'}
-            </p>
-          )}
-        </div>
-      </ProviderCard>
+    <section className="flex flex-col gap-6">
+      <div className="mx-auto w-full max-w-6xl">
+        <ProviderCard
+          title="Runtime control center"
+          icon={<Play className="h-5 w-5 text-nvidia" />}
+          description="Start or stop tracked models across your inference backends."
+        >
+          <div className="space-y-4 text-sm">
+            <div className="flex flex-wrap justify-center gap-4">
+              {runtimeProviders.map(({ key, label, modelPlaceholder, basePlaceholder }) => (
+                <div key={key} className="w-full max-w-md flex-1 sm:min-w-[260px] xl:min-w-[280px]">
+                  <RuntimeControlRow
+                    label={label}
+                    input={runtimeInputs[key]}
+                    modelPlaceholder={modelPlaceholder}
+                    basePlaceholder={basePlaceholder}
+                    onChange={(value) =>
+                      setRuntimeInputs((prev) => ({
+                        ...prev,
+                        [key]: value,
+                      }))
+                    }
+                    onStart={() => handleStart(key)}
+                    onStop={() => handleStop(key)}
+                    isStarting={isStarting(key)}
+                    isStopping={isStopping(key)}
+                    message={runtimeMessages[key]}
+                    runningModels={getRunningModels(key)}
+                  />
+                </div>
+              ))}
+            </div>
+            {runtimeQuery.isError && (
+              <p className="text-xs text-amber-400">
+                {runtimeQuery.error instanceof Error
+                  ? runtimeQuery.error.message
+                  : 'Unable to load runtime status'}
+              </p>
+            )}
+          </div>
+        </ProviderCard>
+      </div>
 
-      <ProviderCard
-        title="Ollama model library"
-        icon={<RefreshCw className="h-5 w-5 text-nvidia" />}
-        description="Pull local Ollama models and inspect what is already available on the node."
-      >
-        <div className="space-y-3 text-sm">
-          <label className="flex flex-col gap-1 text-slate-300">
-            Ollama base URL
-            <input
-              value={ollamaBaseUrl}
-              onChange={(event) => setOllamaBaseUrl(event.target.value)}
-              className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
-              placeholder="http://localhost:11434"
-            />
-          </label>
-          <div className="flex items-end gap-2">
-            <label className="flex-1 text-slate-300">
-              <span className="mb-1 block">Model to pull</span>
+      <div className="mx-auto w-full max-w-6xl space-y-6">
+        <ProviderCard
+          title="NVIDIA NIM catalog"
+          icon={<ShieldCheck className="h-5 w-5 text-nvidia" />}
+          description="Authenticate with an NGC API key to search and pull NIM containers."
+        >
+          <div className="space-y-3 text-sm">
+            <label className="flex flex-col gap-1 text-slate-300">
+              NGC API key
               <input
-                value={ollamaModel}
-                onChange={(event) => setOllamaModel(event.target.value)}
-                className="w-full rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
-                placeholder="llama3"
+                type="password"
+                value={ngcKey}
+                onChange={(event) => setNgcKey(event.target.value)}
+                className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                placeholder="NGC API token"
               />
             </label>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="flex flex-col gap-1 text-slate-300">
+                Organization
+                <input
+                  value={nimOrg}
+                  onChange={(event) => setNimOrg(event.target.value)}
+                  className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                  placeholder="nvidia"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-slate-300">
+                Search filter
+                <input
+                  value={nimQuery}
+                  onChange={(event) => setNimQuery(event.target.value)}
+                  className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                  placeholder="nemotron"
+                />
+              </label>
+            </div>
             <button
               type="button"
-              onClick={() => pullOllamaModel.mutate()}
-              disabled={pullOllamaModel.isPending}
-              className="inline-flex items-center gap-2 rounded-md bg-nvidia px-3 py-2 font-semibold text-slate-950"
-            >
-              <Download className="h-4 w-4" />
-              Pull
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={() => fetchOllamaModels.mutate()}
-            disabled={fetchOllamaModels.isPending}
-            className="inline-flex items-center gap-2 rounded-md border border-slate-800 px-3 py-2 text-slate-200"
-          >
-            <Database className="h-4 w-4" />
-            Refresh installed models
-          </button>
-          {ollamaMessage && <p className="text-xs text-amber-400">{ollamaMessage}</p>}
-          <ModelList models={ollamaModels} emptyLabel="No models installed yet." />
-        </div>
-      </ProviderCard>
-
-      <ProviderCard
-        title="NVIDIA NIM catalog"
-        icon={<ShieldCheck className="h-5 w-5 text-nvidia" />}
-        description="Authenticate with an NGC API key to search and pull NIM containers."
-      >
-        <div className="space-y-3 text-sm">
-          <label className="flex flex-col gap-1 text-slate-300">
-            NGC API key
-            <input
-              type="password"
-              value={ngcKey}
-              onChange={(event) => setNgcKey(event.target.value)}
-              className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
-              placeholder="NGC API token"
-            />
-          </label>
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="flex flex-col gap-1 text-slate-300">
-              Organization
-              <input
-                value={nimOrg}
-                onChange={(event) => setNimOrg(event.target.value)}
-                className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
-                placeholder="nvidia"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-slate-300">
-              Search filter
-              <input
-                value={nimQuery}
-                onChange={(event) => setNimQuery(event.target.value)}
-                className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
-                placeholder="nemotron"
-              />
-            </label>
-          </div>
-          <button
-            type="button"
-            onClick={() => searchNimModels.mutate()}
-            disabled={searchNimModels.isPending}
-            className="inline-flex items-center gap-2 rounded-md border border-slate-800 px-3 py-2 text-slate-200"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Search catalog
-          </button>
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="flex flex-col gap-1 text-slate-300">
-              Container image
-              <input
-                value={nimImage}
-                onChange={(event) => setNimImage(event.target.value)}
-                className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
-                placeholder="nvcr.io/nim/..."
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-slate-300">
-              Tag
-              <input
-                value={nimTag}
-                onChange={(event) => setNimTag(event.target.value)}
-                className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
-                placeholder="latest"
-              />
-            </label>
-          </div>
-          <button
-            type="button"
-            onClick={() => pullNimModel.mutate()}
-            disabled={pullNimModel.isPending}
-            className="inline-flex items-center gap-2 rounded-md bg-nvidia px-3 py-2 font-semibold text-slate-950"
-          >
-            <Download className="h-4 w-4" />
-            Docker pull
-          </button>
-          {nimMessage && <p className="text-xs text-amber-400">{nimMessage}</p>}
-          <ModelList models={nimModels} emptyLabel="No catalog entries yet." />
-        </div>
-      </ProviderCard>
-
-      <ProviderCard
-        title="Hugging Face checkpoints"
-        icon={<Zap className="h-5 w-5 text-nvidia" />}
-        description="Browse gated checkpoints and trigger downloads for vLLM hosts."
-      >
-        <div className="space-y-3 text-sm">
-          <label className="flex flex-col gap-1 text-slate-300">
-            Hugging Face API key
-            <input
-              type="password"
-              value={hfKey}
-              onChange={(event) => setHfKey(event.target.value)}
-              className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
-              placeholder="hf_api_..."
-            />
-          </label>
-          <div className="flex items-end gap-2">
-            <label className="flex-1 text-slate-300">
-              <span className="mb-1 block">Search</span>
-              <input
-                value={hfQuery}
-                onChange={(event) => setHfQuery(event.target.value)}
-                className="w-full rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
-                placeholder="Meta-Llama"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() => searchHfModels.mutate()}
-              disabled={searchHfModels.isPending}
+              onClick={() => searchNimModels.mutate()}
+              disabled={searchNimModels.isPending}
               className="inline-flex items-center gap-2 rounded-md border border-slate-800 px-3 py-2 text-slate-200"
             >
               <RefreshCw className="h-4 w-4" />
-              Search
+              Search catalog
             </button>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="flex flex-col gap-1 text-slate-300">
+                Container image
+                <input
+                  value={nimImage}
+                  onChange={(event) => setNimImage(event.target.value)}
+                  className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                  placeholder="nvcr.io/nim/..."
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-slate-300">
+                Tag
+                <input
+                  value={nimTag}
+                  onChange={(event) => setNimTag(event.target.value)}
+                  className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                  placeholder="latest"
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={() => pullNimModel.mutate()}
+              disabled={pullNimModel.isPending}
+              className="inline-flex items-center gap-2 rounded-md bg-nvidia px-3 py-2 font-semibold text-slate-950"
+            >
+              <Download className="h-4 w-4" />
+              Docker pull
+            </button>
+            {nimMessage && <p className="text-xs text-amber-400">{nimMessage}</p>}
+            <ModelList models={nimModels} emptyLabel="No catalog entries yet." />
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
+        </ProviderCard>
+
+        <ProviderCard
+          title="Ollama model library"
+          icon={<RefreshCw className="h-5 w-5 text-nvidia" />}
+          description="Pull local Ollama models and inspect what is already available on the node."
+        >
+          <div className="space-y-3 text-sm">
             <label className="flex flex-col gap-1 text-slate-300">
-              Repository ID
+              Ollama base URL
               <input
-                value={hfModel}
-                onChange={(event) => setHfModel(event.target.value)}
+                value={ollamaBaseUrl}
+                onChange={(event) => setOllamaBaseUrl(event.target.value)}
                 className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
-                placeholder="org/model"
+                placeholder="http://localhost:11434"
               />
             </label>
+            <div className="flex items-end gap-2">
+              <label className="flex-1 text-slate-300">
+                <span className="mb-1 block">Model to pull</span>
+                <input
+                  value={ollamaModel}
+                  onChange={(event) => setOllamaModel(event.target.value)}
+                  className="w-full rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                  placeholder="llama3"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => pullOllamaModel.mutate()}
+                disabled={pullOllamaModel.isPending}
+                className="inline-flex items-center gap-2 rounded-md bg-nvidia px-3 py-2 font-semibold text-slate-950"
+              >
+                <Download className="h-4 w-4" />
+                Pull
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => fetchOllamaModels.mutate()}
+              disabled={fetchOllamaModels.isPending}
+              className="inline-flex items-center gap-2 rounded-md border border-slate-800 px-3 py-2 text-slate-200"
+            >
+              <Database className="h-4 w-4" />
+              Refresh installed models
+            </button>
+            {ollamaMessage && <p className="text-xs text-amber-400">{ollamaMessage}</p>}
+            <ModelList models={ollamaModels} emptyLabel="No models installed yet." />
+          </div>
+        </ProviderCard>
+      </div>
+
+      <div className="mx-auto w-full max-w-6xl">
+        <ProviderCard
+          title="Hugging Face checkpoints"
+          icon={<Zap className="h-5 w-5 text-nvidia" />}
+          description="Browse gated checkpoints and trigger downloads for vLLM hosts."
+        >
+          <div className="space-y-3 text-sm">
             <label className="flex flex-col gap-1 text-slate-300">
-              Revision (optional)
+              Hugging Face API key
               <input
-                value={hfRevision}
-                onChange={(event) => setHfRevision(event.target.value)}
+                type="password"
+                value={hfKey}
+                onChange={(event) => setHfKey(event.target.value)}
                 className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
-                placeholder="main"
+                placeholder="hf_api_..."
               />
             </label>
+            <div className="flex items-end gap-2">
+              <label className="flex-1 text-slate-300">
+                <span className="mb-1 block">Search</span>
+                <input
+                  value={hfQuery}
+                  onChange={(event) => setHfQuery(event.target.value)}
+                  className="w-full rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                  placeholder="Meta-Llama"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => searchHfModels.mutate()}
+                disabled={searchHfModels.isPending}
+                className="inline-flex items-center gap-2 rounded-md border border-slate-800 px-3 py-2 text-slate-200"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Search
+              </button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="flex flex-col gap-1 text-slate-300">
+                Repository ID
+                <input
+                  value={hfModel}
+                  onChange={(event) => setHfModel(event.target.value)}
+                  className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                  placeholder="org/model"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-slate-300">
+                Revision (optional)
+                <input
+                  value={hfRevision}
+                  onChange={(event) => setHfRevision(event.target.value)}
+                  className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                  placeholder="main"
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={() => downloadHfModel.mutate()}
+              disabled={downloadHfModel.isPending}
+              className="inline-flex items-center gap-2 rounded-md bg-nvidia px-3 py-2 font-semibold text-slate-950"
+            >
+              <Download className="h-4 w-4" />
+              Download snapshot
+            </button>
+            {hfMessage && <p className="text-xs text-amber-400">{hfMessage}</p>}
+            <ModelList models={hfModels} emptyLabel="No models returned yet." />
           </div>
-          <button
-            type="button"
-            onClick={() => downloadHfModel.mutate()}
-            disabled={downloadHfModel.isPending}
-            className="inline-flex items-center gap-2 rounded-md bg-nvidia px-3 py-2 font-semibold text-slate-950"
-          >
-            <Download className="h-4 w-4" />
-            Download snapshot
-          </button>
-          {hfMessage && <p className="text-xs text-amber-400">{hfMessage}</p>}
-          <ModelList models={hfModels} emptyLabel="No models returned yet." />
-        </div>
-      </ProviderCard>
+        </ProviderCard>
+      </div>
     </section>
   );
 }
@@ -630,7 +639,7 @@ function RuntimeControlRow({
     : 'No tracked models.';
 
   return (
-    <div className="space-y-3 rounded-md border border-slate-800 bg-slate-950/60 p-3">
+    <div className="flex h-full flex-col space-y-3 rounded-md border border-slate-800 bg-slate-950/60 p-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
       <div className="grid gap-3 md:grid-cols-2">
         <label className="flex flex-col gap-1 text-slate-300">
