@@ -5,6 +5,7 @@ from typing import Dict, Type
 
 from ..schemas import BackendSpecificParameters, BenchmarkParameters, BenchmarkProvider
 from .base import BackendClient
+from .llamacpp import LlamaCppClient
 from .nim import NimClient
 from .ollama import OllamaClient
 from .vllm import VllmClient
@@ -14,6 +15,7 @@ CLIENTS: Dict[BenchmarkProvider, Type[BackendClient]] = {
     BenchmarkProvider.OLLAMA: OllamaClient,
     BenchmarkProvider.NIM: NimClient,
     BenchmarkProvider.VLLM: VllmClient,
+    BenchmarkProvider.LLAMACPP: LlamaCppClient,
 }
 
 

@@ -50,6 +50,8 @@ class BenchmarkExecutor:
             return settings.nim_base_url
         if self.request.provider == self.request.provider.VLLM:
             return settings.vllm_base_url
+        if self.request.provider == self.request.provider.LLAMACPP:
+            return settings.llamacpp_base_url
         raise ValueError(f"Unknown provider {self.request.provider}")
 
     async def iter_metrics(self) -> AsyncIterator[RequestMetrics]:

@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import create_all
-from .model_registry import ModelRegistryService
+from .model_registry import ModelRegistryService, ModelRuntimeService
 from .schemas import (
     AutoBenchmarkRequest,
     BackendMetadata,
@@ -21,6 +21,8 @@ from .schemas import (
     HuggingFaceSearchRequest,
     ModelActionResponse,
     ModelListResponse,
+    ModelRuntimeListResponse,
+    ModelRuntimeRequest,
     NimPullRequest,
     NimSearchRequest,
     OllamaPullRequest,
@@ -41,6 +43,7 @@ app.add_middleware(
 
 service = BenchmarkService()
 model_registry = ModelRegistryService(settings=settings)
+runtime_service = ModelRuntimeService(settings=settings)
 
 
 def get_service() -> BenchmarkService:
@@ -95,6 +98,17 @@ async def list_backends() -> List[BackendMetadata]:
                 "top_p": "Nucleus sampling",
                 "best_of": "Number of candidates before returning best",
                 "use_beam_search": "Toggle beam search decoding",
+            },
+        ),
+        BackendMetadata(
+            name="llama.cpp",
+            provider=BenchmarkProvider.LLAMACPP,
+            default_base_url=settings.llamacpp_base_url,
+            description="Lightweight inference server powered by llama.cpp.",
+            parameters={
+                "temperature": "Sampling temperature",
+                "top_p": "Nucleus sampling",
+                "n_predict": "Tokens to predict per request",
             },
         ),
     ]
@@ -168,6 +182,21 @@ async def list_ollama_models(base_url: str | None = None) -> ModelListResponse:
 @app.post("/api/models/ollama/pull", response_model=ModelActionResponse)
 async def pull_ollama_model(request: OllamaPullRequest) -> ModelActionResponse:
     return await model_registry.pull_ollama_model(request)
+
+
+@app.get("/api/models/runtimes", response_model=ModelRuntimeListResponse)
+async def list_running_models() -> ModelRuntimeListResponse:
+    return await runtime_service.list_runtimes()
+
+
+@app.post("/api/models/runtimes/start", response_model=ModelActionResponse)
+async def start_model(request: ModelRuntimeRequest) -> ModelActionResponse:
+    return await runtime_service.start_model(request)
+
+
+@app.post("/api/models/runtimes/stop", response_model=ModelActionResponse)
+async def stop_model(request: ModelRuntimeRequest) -> ModelActionResponse:
+    return await runtime_service.stop_model(request)
 
 
 @app.post("/api/models/nim/search", response_model=ModelListResponse)

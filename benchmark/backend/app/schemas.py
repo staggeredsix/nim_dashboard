@@ -11,6 +11,7 @@ class BenchmarkProvider(str, Enum):
     OLLAMA = "ollama"
     NIM = "nim"
     VLLM = "vllm"
+    LLAMACPP = "llamacpp"
 
 
 class BackendMetadata(BaseModel):
@@ -117,6 +118,23 @@ class OllamaPullRequest(BaseModel):
     model_name: str
     base_url: Optional[AnyHttpUrl] = None
     stream: bool = Field(default=False)
+
+
+class ModelRuntimeRequest(BaseModel):
+    provider: BenchmarkProvider
+    model_name: str
+    base_url: Optional[AnyHttpUrl] = None
+
+
+class ModelRuntimeInfo(BaseModel):
+    provider: BenchmarkProvider
+    model_name: str
+    base_url: AnyHttpUrl
+    started_at: str
+
+
+class ModelRuntimeListResponse(BaseModel):
+    runtimes: List[ModelRuntimeInfo]
 
 
 class NimSearchRequest(BaseModel):

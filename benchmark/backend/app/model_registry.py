@@ -1,10 +1,12 @@
-"""Utilities for managing provider specific model catalogs."""
+"""Utilities for managing provider specific model catalogs and runtimes."""
 from __future__ import annotations
 
 import asyncio
 import pathlib
 import shutil
-from typing import List, Optional
+from collections import defaultdict
+from datetime import datetime
+from typing import Dict, List, Optional
 
 import httpx
 from fastapi import HTTPException
@@ -16,15 +18,20 @@ except ImportError:  # pragma: no cover - optional dependency
     snapshot_download = None  # type: ignore
 
 from .schemas import (
+    BenchmarkProvider,
     HuggingFaceDownloadRequest,
     HuggingFaceSearchRequest,
     ModelActionResponse,
     ModelInfo,
+    ModelRuntimeInfo,
+    ModelRuntimeListResponse,
+    ModelRuntimeRequest,
     NimPullRequest,
     NimSearchRequest,
     OllamaPullRequest,
 )
 from .settings import Settings
+from .utils import model_dump
 
 
 class ModelRegistryService:
@@ -192,6 +199,61 @@ class ModelRegistryService:
             detail="Model downloaded successfully",
             metadata={"path": str(path)},
         )
+
+
+class ModelRuntimeService:
+    """Tracks and manages runtime state for provider models."""
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self._lock = asyncio.Lock()
+        self._running: Dict[BenchmarkProvider, Dict[str, ModelRuntimeInfo]] = defaultdict(dict)
+
+    def _default_base_url(self, provider: BenchmarkProvider) -> str:
+        if provider is BenchmarkProvider.OLLAMA:
+            return self.settings.ollama_base_url
+        if provider is BenchmarkProvider.NIM:
+            return self.settings.nim_base_url
+        if provider is BenchmarkProvider.VLLM:
+            return self.settings.vllm_base_url
+        if provider is BenchmarkProvider.LLAMACPP:
+            return self.settings.llamacpp_base_url
+        raise ValueError(f"Unsupported provider {provider}")
+
+    async def start_model(self, request: ModelRuntimeRequest) -> ModelActionResponse:
+        base_url = (request.base_url or self._default_base_url(request.provider)).rstrip("/")
+        info = ModelRuntimeInfo(
+            provider=request.provider,
+            model_name=request.model_name,
+            base_url=base_url,
+            started_at=datetime.utcnow().isoformat(),
+        )
+
+        async with self._lock:
+            self._running[request.provider][request.model_name] = info
+
+        detail = f"Marked {request.model_name} as running for {request.provider.value}"
+        return ModelActionResponse(status="running", detail=detail, metadata=model_dump(info))
+
+    async def stop_model(self, request: ModelRuntimeRequest) -> ModelActionResponse:
+        async with self._lock:
+            provider_models = self._running.get(request.provider, {})
+            existing = provider_models.pop(request.model_name, None)
+            if existing is None:
+                detail = f"Model {request.model_name} was not registered as running"
+                return ModelActionResponse(status="missing", detail=detail, metadata=None)
+
+        detail = f"Stopped tracking {request.model_name} for {request.provider.value}"
+        return ModelActionResponse(status="stopped", detail=detail, metadata=model_dump(existing))
+
+    async def list_runtimes(self) -> ModelRuntimeListResponse:
+        async with self._lock:
+            runtimes: List[ModelRuntimeInfo] = []
+            for provider_models in self._running.values():
+                runtimes.extend(provider_models.values())
+
+        runtimes.sort(key=lambda info: info.started_at, reverse=True)
+        return ModelRuntimeListResponse(runtimes=runtimes)
 
 
 async def _run_command(cmd: List[str], input_data: Optional[str] = None) -> str:

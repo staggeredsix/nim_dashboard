@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { Database, Download, RefreshCw, ShieldCheck, Zap } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Database, Download, Play, RefreshCw, ShieldCheck, Square, Zap } from 'lucide-react';
 
 import type { BackendMetadata } from './BenchmarkForm';
 import { getJson, postJson } from '../lib/api';
@@ -24,19 +24,77 @@ interface ModelActionResponse {
   metadata?: Record<string, unknown> | null;
 }
 
+interface ModelRuntimeInfo {
+  provider: string;
+  model_name: string;
+  base_url: string;
+  started_at: string;
+}
+
+interface ModelRuntimeListResponse {
+  runtimes: ModelRuntimeInfo[];
+}
+
+type ProviderKey = 'ollama' | 'nim' | 'vllm' | 'llamacpp';
+
+interface RuntimeInputState {
+  baseUrl: string;
+  model: string;
+}
+
+interface ModelRuntimePayload {
+  provider: ProviderKey;
+  model_name: string;
+  base_url?: string;
+}
+
 interface Props {
   backends: BackendMetadata[];
 }
 
 export function ModelManager({ backends }: Props) {
+  const queryClient = useQueryClient();
   const defaultOllamaUrl = useMemo(
     () => backends.find((backend) => backend.provider === 'ollama')?.default_base_url ?? 'http://localhost:11434',
     [backends]
   );
+  const defaultNimUrl = useMemo(
+    () => backends.find((backend) => backend.provider === 'nim')?.default_base_url ?? 'http://localhost:8001',
+    [backends]
+  );
+  const defaultVllmUrl = useMemo(
+    () => backends.find((backend) => backend.provider === 'vllm')?.default_base_url ?? 'http://localhost:8000',
+    [backends]
+  );
+  const defaultLlamaCppUrl = useMemo(
+    () => backends.find((backend) => backend.provider === 'llamacpp')?.default_base_url ?? 'http://localhost:8080',
+    [backends]
+  );
+  const [runtimeInputs, setRuntimeInputs] = useState<Record<ProviderKey, RuntimeInputState>>({
+    ollama: { baseUrl: defaultOllamaUrl, model: 'llama3' },
+    nim: { baseUrl: defaultNimUrl, model: 'nvcr.io/nim/nemotron-3-8b-instruct' },
+    vllm: { baseUrl: defaultVllmUrl, model: 'Meta-Llama-3-8B-Instruct' },
+    llamacpp: { baseUrl: defaultLlamaCppUrl, model: 'llama-2-7b' },
+  });
+  const [runtimeMessages, setRuntimeMessages] = useState<Record<ProviderKey, string | null>>({
+    ollama: null,
+    nim: null,
+    vllm: null,
+    llamacpp: null,
+  });
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState(defaultOllamaUrl);
   const [ollamaModel, setOllamaModel] = useState('llama3');
   const [ollamaModels, setOllamaModels] = useState<ModelInfo[]>([]);
   const [ollamaMessage, setOllamaMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRuntimeInputs((prev) => ({
+      ollama: { ...prev.ollama, baseUrl: defaultOllamaUrl },
+      nim: { ...prev.nim, baseUrl: defaultNimUrl },
+      vllm: { ...prev.vllm, baseUrl: defaultVllmUrl },
+      llamacpp: { ...prev.llamacpp, baseUrl: defaultLlamaCppUrl },
+    }));
+  }, [defaultOllamaUrl, defaultNimUrl, defaultVllmUrl, defaultLlamaCppUrl]);
 
   useEffect(() => {
     setOllamaBaseUrl(defaultOllamaUrl);
@@ -150,6 +208,105 @@ export function ModelManager({ backends }: Props) {
     },
   });
 
+  const runtimeQuery = useQuery<ModelRuntimeListResponse>({
+    queryKey: ['model-runtimes'],
+    queryFn: () => getJson<ModelRuntimeListResponse>('/api/models/runtimes'),
+    refetchInterval: 5000,
+  });
+
+  const runtimeProviders: Array<{
+    key: ProviderKey;
+    label: string;
+    modelPlaceholder: string;
+    basePlaceholder: string;
+  }> = [
+    {
+      key: 'ollama',
+      label: 'Ollama runtime',
+      modelPlaceholder: 'llama3',
+      basePlaceholder: defaultOllamaUrl,
+    },
+    {
+      key: 'nim',
+      label: 'NIM runtime',
+      modelPlaceholder: 'nemotron-3-8b-instruct',
+      basePlaceholder: defaultNimUrl,
+    },
+    {
+      key: 'vllm',
+      label: 'vLLM runtime',
+      modelPlaceholder: 'Meta-Llama-3-8B-Instruct',
+      basePlaceholder: defaultVllmUrl,
+    },
+    {
+      key: 'llamacpp',
+      label: 'llama.cpp runtime',
+      modelPlaceholder: 'llama-2-7b',
+      basePlaceholder: defaultLlamaCppUrl,
+    },
+  ];
+
+  const runtimeData = runtimeQuery.data?.runtimes ?? [];
+  const getRunningModels = (provider: ProviderKey) =>
+    runtimeData.filter((runtime) => runtime.provider === provider);
+
+  const startRuntime = useMutation<ModelActionResponse, Error, ModelRuntimePayload>({
+    mutationFn: (payload) => postJson<ModelActionResponse>('/api/models/runtimes/start', payload),
+    onSuccess: (data, variables) => {
+      setRuntimeMessages((prev) => ({ ...prev, [variables.provider]: data.detail }));
+      queryClient.invalidateQueries({ queryKey: ['model-runtimes'] });
+    },
+    onError: (error, variables) => {
+      if (variables) {
+        setRuntimeMessages((prev) => ({ ...prev, [variables.provider]: error.message }));
+      }
+    },
+  });
+
+  const stopRuntime = useMutation<ModelActionResponse, Error, ModelRuntimePayload>({
+    mutationFn: (payload) => postJson<ModelActionResponse>('/api/models/runtimes/stop', payload),
+    onSuccess: (data, variables) => {
+      setRuntimeMessages((prev) => ({ ...prev, [variables.provider]: data.detail }));
+      queryClient.invalidateQueries({ queryKey: ['model-runtimes'] });
+    },
+    onError: (error, variables) => {
+      if (variables) {
+        setRuntimeMessages((prev) => ({ ...prev, [variables.provider]: error.message }));
+      }
+    },
+  });
+
+  const isStarting = (provider: ProviderKey) =>
+    startRuntime.isPending && startRuntime.variables?.provider === provider;
+  const isStopping = (provider: ProviderKey) =>
+    stopRuntime.isPending && stopRuntime.variables?.provider === provider;
+
+  const handleStart = (provider: ProviderKey) => {
+    const input = runtimeInputs[provider];
+    if (!input.model.trim()) {
+      setRuntimeMessages((prev) => ({ ...prev, [provider]: 'Model name is required to start.' }));
+      return;
+    }
+    startRuntime.mutate({
+      provider,
+      model_name: input.model,
+      base_url: input.baseUrl || undefined,
+    });
+  };
+
+  const handleStop = (provider: ProviderKey) => {
+    const input = runtimeInputs[provider];
+    if (!input.model.trim()) {
+      setRuntimeMessages((prev) => ({ ...prev, [provider]: 'Model name is required to stop.' }));
+      return;
+    }
+    stopRuntime.mutate({
+      provider,
+      model_name: input.model,
+      base_url: input.baseUrl || undefined,
+    });
+  };
+
   const shouldRender = backends.length > 0;
   if (!shouldRender) {
     return null;
@@ -157,6 +314,43 @@ export function ModelManager({ backends }: Props) {
 
   return (
     <section className="grid gap-4 xl:grid-cols-3">
+      <ProviderCard
+        title="Runtime control center"
+        icon={<Play className="h-5 w-5 text-nvidia" />}
+        description="Start or stop tracked models across your inference backends."
+      >
+        <div className="space-y-4 text-sm">
+          {runtimeProviders.map(({ key, label, modelPlaceholder, basePlaceholder }) => (
+            <RuntimeControlRow
+              key={key}
+              label={label}
+              input={runtimeInputs[key]}
+              modelPlaceholder={modelPlaceholder}
+              basePlaceholder={basePlaceholder}
+              onChange={(value) =>
+                setRuntimeInputs((prev) => ({
+                  ...prev,
+                  [key]: value,
+                }))
+              }
+              onStart={() => handleStart(key)}
+              onStop={() => handleStop(key)}
+              isStarting={isStarting(key)}
+              isStopping={isStopping(key)}
+              message={runtimeMessages[key]}
+              runningModels={getRunningModels(key)}
+            />
+          ))}
+          {runtimeQuery.isError && (
+            <p className="text-xs text-amber-400">
+              {runtimeQuery.error instanceof Error
+                ? runtimeQuery.error.message
+                : 'Unable to load runtime status'}
+            </p>
+          )}
+        </div>
+      </ProviderCard>
+
       <ProviderCard
         title="Ollama model library"
         icon={<RefreshCw className="h-5 w-5 text-nvidia" />}
@@ -401,5 +595,85 @@ function ModelList({ models, emptyLabel }: ModelListProps) {
         </li>
       ))}
     </ul>
+  );
+}
+
+interface RuntimeControlRowProps {
+  label: string;
+  input: RuntimeInputState;
+  modelPlaceholder: string;
+  basePlaceholder: string;
+  onChange: (value: RuntimeInputState) => void;
+  onStart: () => void;
+  onStop: () => void;
+  isStarting: boolean;
+  isStopping: boolean;
+  message: string | null;
+  runningModels: ModelRuntimeInfo[];
+}
+
+function RuntimeControlRow({
+  label,
+  input,
+  modelPlaceholder,
+  basePlaceholder,
+  onChange,
+  onStart,
+  onStop,
+  isStarting,
+  isStopping,
+  message,
+  runningModels,
+}: RuntimeControlRowProps) {
+  const runningLabel = runningModels.length
+    ? `Running: ${runningModels.map((item) => item.model_name).join(', ')}`
+    : 'No tracked models.';
+
+  return (
+    <div className="space-y-3 rounded-md border border-slate-800 bg-slate-950/60 p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="flex flex-col gap-1 text-slate-300">
+          <span className="text-xs text-slate-400">Base URL</span>
+          <input
+            value={input.baseUrl}
+            onChange={(event) => onChange({ ...input, baseUrl: event.target.value })}
+            placeholder={basePlaceholder}
+            className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-slate-300">
+          <span className="text-xs text-slate-400">Model name</span>
+          <input
+            value={input.model}
+            onChange={(event) => onChange({ ...input, model: event.target.value })}
+            placeholder={modelPlaceholder}
+            className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+          />
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onStart}
+          disabled={isStarting || !input.model.trim()}
+          className="inline-flex items-center gap-2 rounded-md bg-nvidia px-3 py-2 font-semibold text-slate-950 disabled:opacity-70"
+        >
+          <Play className="h-4 w-4" />
+          {isStarting ? 'Starting…' : 'Start'}
+        </button>
+        <button
+          type="button"
+          onClick={onStop}
+          disabled={isStopping || !input.model.trim()}
+          className="inline-flex items-center gap-2 rounded-md border border-slate-800 px-3 py-2 text-slate-200 disabled:opacity-70"
+        >
+          <Square className="h-4 w-4" />
+          {isStopping ? 'Stopping…' : 'Stop'}
+        </button>
+      </div>
+      <p className="text-xs text-slate-500">{runningLabel}</p>
+      {message && <p className="text-xs text-amber-400">{message}</p>}
+    </div>
   );
 }

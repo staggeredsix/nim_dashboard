@@ -1,16 +1,17 @@
 # NIM Benchmark Dashboard
 
-Modernised benchmarking harness for exercising NVIDIA NIM, vLLM, and Ollama deployments. The project ships with a FastAPI
+Modernised benchmarking harness for exercising NVIDIA NIM, vLLM, Ollama, and llama.cpp deployments. The project ships with a FastAPI
 backend that orchestrates load tests and a Vite + React dashboard for monitoring runs.
 
 ## Features
 
-- Asynchronous FastAPI backend with pluggable clients for NIM, vLLM, and Ollama
+- Asynchronous FastAPI backend with pluggable clients for NIM, vLLM, Ollama, and llama.cpp
 - Benchmark executor with warmups, concurrency control, and automatic statistics (p50/p95 latency, TPS, TTFT)
 - SQLite-backed history with REST endpoints for scheduling and tracking runs
 - Auto-benchmark sweeps for quickly exploring concurrency, token, and temperature combinations
 - React dashboard featuring backend selectors, parameter knobs, and live history updates
 - Built-in model management for Ollama, NVIDIA NIM, and Hugging Face checkpoints
+- Runtime controls to mark models as running or stopped across all supported providers
 - Containerised deployment (Dockerfiles + `docker-compose.yml`) with multi-architecture build script
 - Start and deploy helper scripts for local development or CI pipelines
 
@@ -95,6 +96,9 @@ The API exposes helper endpoints so you can pull and inspect model assets direct
 | `POST /api/models/nim/pull` | Run `docker pull` against `nvcr.io` using the supplied NGC API key. |
 | `POST /api/models/huggingface/search` | Search the Hugging Face model hub using an optional HF API token. |
 | `POST /api/models/huggingface/download` | Download a gated model snapshot into the backend's model cache directory. |
+| `GET /api/models/runtimes` | Inspect which models are currently marked as running across providers. |
+| `POST /api/models/runtimes/start` | Mark a model as running for a given provider/base URL combination. |
+| `POST /api/models/runtimes/stop` | Stop tracking a running model for a provider. |
 
 Supply API keys in the request body when required. The frontend surfaces these flows under the new "Model management" section.
 
