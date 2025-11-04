@@ -1,0 +1,33 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: ./benchmark/backend
+      dockerfile: Dockerfile
+    image: nim-benchmark-backend:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - NGC_API_KEY=${NGC_API_KEY:-}
+      - DATABASE_URL=sqlite:////data/benchmarks.db
+    volumes:
+      - backend_data:/data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./benchmark/frontend
+      dockerfile: Dockerfile
+    image: nim-benchmark-frontend:latest
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+    environment:
+      - VITE_API_BASE=/
+    restart: unless-stopped
+
+volumes:
+  backend_data:

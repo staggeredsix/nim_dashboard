@@ -1,218 +1,113 @@
-import React, { useState, useEffect } from 'react';
-import { Activity, Calendar, Clock, Download } from 'lucide-react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer
-} from 'recharts';
+import { History } from 'lucide-react';
 
-const StatusBadge = ({ status }) => {
-  const colors = {
-    completed: 'bg-green-900 text-green-300',
-    running: 'bg-blue-900 text-blue-300',
-    failed: 'bg-red-900 text-red-300',
-    stopped: 'bg-yellow-900 text-yellow-300'
-  };
-
-  return (
-    <span className={`px-2 py-1 rounded-full text-sm ${colors[status] || colors.failed}`}>
-      {status}
-    </span>
-  );
+export type BenchmarkHistoryItem = {
+  id: number;
+  provider: string;
+  model_name: string;
+  status: string;
+  created_at: string;
+  completed_at?: string | null;
+  metrics?: Record<string, number> | null;
+  error?: string | null;
 };
 
-const BenchmarkHistory = () => {
-  const [history, setHistory] = useState([]);
-  const [selectedRun, setSelectedRun] = useState(null);
-  const [loading, setLoading] = useState(true);
+interface Props {
+  runs: BenchmarkHistoryItem[];
+  isLoading: boolean;
+  onRefresh: () => void;
+}
 
-  useEffect(() => {
-    fetchHistory();
-  }, []);
-
-  const fetchHistory = async () => {
-    try {
-      const response = await fetch('/api/benchmark/history');
-      const data = await response.json();
-      setHistory(data);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error fetching history:', error);
-      setLoading(false);
-    }
-  };
-
-  const fetchRunDetails = async (runId) => {
-    try {
-      const response = await fetch(`/api/benchmark/history/${runId}`);
-      const data = await response.json();
-      setSelectedRun(data);
-    } catch (error) {
-      console.error('Error fetching run details:', error);
-    }
-  };
-
-  const exportResults = async (runId) => {
-    try {
-      const response = await fetch(`/api/benchmark/history/${runId}/export`);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `benchmark-${runId}-results.json`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Error exporting results:', error);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="bg-gray-800 p-6 rounded-lg">
-        <div className="text-center text-gray-400">Loading benchmark history...</div>
-      </div>
-    );
-  }
-
+export function BenchmarkHistory({ runs, isLoading, onRefresh }: Props) {
   return (
-    <div className="space-y-6">
-      {/* History List */}
-      <div className="bg-gray-800 p-6 rounded-lg">
-        <h2 className="text-xl font-bold mb-4">Benchmark History</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="text-left border-b border-gray-700">
-                <th className="pb-3">Model</th>
-                <th className="pb-3">Status</th>
-                <th className="pb-3">Started</th>
-                <th className="pb-3">Duration</th>
-                <th className="pb-3">Avg TPS</th>
-                <th className="pb-3">Actions</th>
+    <section className="bg-slate-900 rounded-xl border border-slate-800 p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2 text-slate-300">
+          <History className="h-5 w-5" />
+          <h2 className="text-lg font-semibold">Benchmark history</h2>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="inline-flex items-center rounded-md border border-slate-700 px-3 py-1 text-sm font-medium text-slate-100 hover:bg-slate-800"
+        >
+          Refresh
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-left text-sm">
+          <thead className="bg-slate-800 text-slate-400">
+            <tr>
+              <th className="px-3 py-2">Run</th>
+              <th className="px-3 py-2">Provider</th>
+              <th className="px-3 py-2">Model</th>
+              <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2">Tokens / TPS</th>
+              <th className="px-3 py-2">Latency P95</th>
+            </tr>
+          </thead>
+          <tbody>
+            {runs.length === 0 && !isLoading && (
+              <tr>
+                <td className="px-3 py-4 text-center text-slate-500" colSpan={6}>
+                  No benchmark runs yet.
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {history.map((run) => (
-                <tr
-                  key={run.id}
-                  className="border-b border-gray-700 cursor-pointer hover:bg-gray-700"
-                  onClick={() => fetchRunDetails(run.id)}
-                >
-                  <td className="py-4">{run.model_name}</td>
-                  <td className="py-4">
-                    <StatusBadge status={run.status} />
-                  </td>
-                  <td className="py-4">
-                    {new Date(run.start_time).toLocaleString()}
-                  </td>
-                  <td className="py-4">
-                    {run.end_time ? 
-                      `${Math.round((new Date(run.end_time) - new Date(run.start_time)) / 1000)}s` 
-                      : 'Running'}
-                  </td>
-                  <td className="py-4">
-                    {run.metrics?.average_tps?.toFixed(2) || 'N/A'}
-                  </td>
-                  <td className="py-4">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        exportResults(run.id);
-                      }}
-                      className="p-2 hover:bg-gray-600 rounded"
-                    >
-                      <Download className="w-5 h-5 text-[#76B900]" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            )}
+            {isLoading && (
+              <tr>
+                <td className="px-3 py-4 text-center text-slate-500" colSpan={6}>
+                  Loading history…
+                </td>
+              </tr>
+            )}
+            {runs.map((run) => (
+              <tr key={run.id} className="border-b border-slate-800">
+                <td className="px-3 py-2 text-slate-200">#{run.id}</td>
+                <td className="px-3 py-2 uppercase text-xs tracking-wide text-slate-400">{run.provider}</td>
+                <td className="px-3 py-2 text-slate-200">{run.model_name}</td>
+                <td className="px-3 py-2">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${statusColor(run.status)}`}
+                  >
+                    {run.status}
+                  </span>
+                  {run.error && <p className="mt-1 text-xs text-red-400">{run.error}</p>}
+                </td>
+                <td className="px-3 py-2 text-slate-200">
+                  {run.metrics ? (
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium">
+                        {run.metrics.tokens_total ?? 0} tokens
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        {run.metrics.tokens_per_second?.toFixed(2) ?? '0.00'} tokens/s
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-slate-500">—</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-slate-200">
+                  {run.metrics?.latency_p95_ms ? `${run.metrics.latency_p95_ms.toFixed(1)} ms` : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-
-      {/* Selected Run Details */}
-      {selectedRun && (
-        <div className="bg-gray-800 p-6 rounded-lg">
-          <h2 className="text-xl font-bold mb-4">Run Details</h2>
-          
-          {/* Performance Graph */}
-          <div className="h-96">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={selectedRun.metrics}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis
-                  dataKey="timestamp"
-                  stroke="#9CA3AF"
-                  tickFormatter={(time) => new Date(time).toLocaleTimeString()}
-                />
-                <YAxis stroke="#9CA3AF" />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#1F2937', border: 'none' }}
-                  labelStyle={{ color: '#9CA3AF' }}
-                />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="tokens_per_second"
-                  stroke="#76B900"
-                  strokeWidth={2}
-                  dot={false}
-                  name="TPS"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="latency"
-                  stroke="#60A5FA"
-                  strokeWidth={2}
-                  dot={false}
-                  name="Latency"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Summary Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-            <div className="bg-gray-900 p-4 rounded-lg">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400">Total Requests</span>
-                <Activity className="w-5 h-5 text-[#76B900]" />
-              </div>
-              <div className="text-2xl font-bold mt-2">
-                {selectedRun.metrics.total_requests}
-              </div>
-            </div>
-            <div className="bg-gray-900 p-4 rounded-lg">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400">Average TPS</span>
-                <Activity className="w-5 h-5 text-[#76B900]" />
-              </div>
-              <div className="text-2xl font-bold mt-2">
-                {selectedRun.metrics.average_tps?.toFixed(2)}
-              </div>
-            </div>
-            <div className="bg-gray-900 p-4 rounded-lg">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400">P95 Latency</span>
-                <Activity className="w-5 h-5 text-[#76B900]" />
-              </div>
-              <div className="text-2xl font-bold mt-2">
-                {selectedRun.metrics.p95_latency?.toFixed(2)}ms
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+    </section>
   );
-};
+}
 
-export default BenchmarkHistory;
+function statusColor(status: string) {
+  switch (status) {
+    case 'completed':
+      return 'bg-emerald-500/20 text-emerald-400';
+    case 'running':
+      return 'bg-sky-500/20 text-sky-300';
+    case 'failed':
+      return 'bg-red-500/20 text-red-400';
+    default:
+      return 'bg-slate-700 text-slate-200';
+  }
+}
