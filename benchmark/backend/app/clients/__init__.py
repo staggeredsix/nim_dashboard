@@ -27,7 +27,7 @@ def create_client(
     parameters: BenchmarkParameters,
     backend_parameters: BackendSpecificParameters,
     timeout: float,
-    ngc_api_key: str | None,
+    api_key: str | None,
 ) -> BackendClient:
     client_cls = CLIENTS.get(provider)
     if not client_cls:
@@ -38,5 +38,5 @@ def create_client(
         parameters=parameters,
         backend_parameters=backend_parameters,
         timeout=timeout,
-        ngc_api_key=ngc_api_key,
+        api_key=api_key,
     )

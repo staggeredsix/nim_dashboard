@@ -41,14 +41,14 @@ class BackendClient(abc.ABC):
         parameters: BenchmarkParameters,
         backend_parameters: BackendSpecificParameters,
         timeout: float,
-        ngc_api_key: Optional[str] = None,
+        api_key: Optional[str] = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name
         self.parameters = parameters
         self.backend_parameters = backend_parameters
         self.timeout = timeout
-        self.ngc_api_key = ngc_api_key
+        self.api_key = api_key
 
     async def warmup(self, prompt: str, client: httpx.AsyncClient) -> None:
         """Execute a warm-up inference that is not included in measurements."""

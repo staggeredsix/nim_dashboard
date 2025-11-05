@@ -14,8 +14,8 @@ from .base import BackendClient, request_with_retry
 class NimClient(BackendClient):
     def _headers(self) -> Dict[str, str]:
         headers = {"Content-Type": "application/json"}
-        if self.ngc_api_key:
-            headers["Authorization"] = f"Bearer {self.ngc_api_key}"
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
     async def _generate(self, prompt: str, client: httpx.AsyncClient) -> Dict[str, Any]:
