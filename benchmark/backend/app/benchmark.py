@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 from typing import Any, AsyncIterator, Dict, Iterable, List
 
 try:
@@ -30,6 +32,7 @@ class BenchmarkExecutor:
     def __init__(self, request: BenchmarkRequest) -> None:
         self.request = request
         self.timeout = request.parameters.timeout or settings.default_timeout
+        self._resolved_prompts: List[str] | None = None
 
     def _create_client(self) -> BackendClient:
         base_url = self.request.base_url or self._default_base_url()
@@ -63,16 +66,23 @@ class BenchmarkExecutor:
         client = self._create_client()
         limits = httpx.Limits(max_connections=self.request.parameters.concurrency)
         async with httpx.AsyncClient(limits=limits, timeout=self.timeout) as http_client:
+            prompts = await self._prepare_prompts(client, http_client)
+            self._resolved_prompts = prompts
+
             if self.request.parameters.warmup_requests:
-                await client.warmup(self.request.prompt, http_client)
+                await client.warmup(prompts[0], http_client)
 
             semaphore = asyncio.Semaphore(self.request.parameters.concurrency)
 
-            async def worker() -> RequestMetrics:
+            async def worker(task_index: int) -> RequestMetrics:
                 async with semaphore:
-                    return await client.generate(self.request.prompt, http_client)
+                    prompt = prompts[task_index % len(prompts)]
+                    return await client.generate(prompt, http_client)
 
-            tasks = [asyncio.create_task(worker()) for _ in range(self.request.parameters.request_count)]
+            tasks = [
+                asyncio.create_task(worker(index))
+                for index in range(self.request.parameters.request_count)
+            ]
 
             for task in asyncio.as_completed(tasks):
                 metrics = await task
@@ -89,12 +99,103 @@ class BenchmarkExecutor:
             model_name=self.request.model_name,
             parameters={
                 "prompt": self.request.prompt,
+                "prompt_settings": {
+                    "use_random_prompts": self.request.use_random_prompts,
+                    "random_prompt_count": self.request.random_prompt_count,
+                    "resolved_prompts": self._resolved_prompts,
+                },
                 "base_url": str(self.request.base_url) if self.request.base_url else None,
                 "parameters": model_dump(self.request.parameters),
                 "backend_parameters": model_dump(self.request.backend_parameters),
             },
             metrics=accumulator.summarize(),
         )
+
+    async def _prepare_prompts(
+        self, client: BackendClient, http_client: httpx.AsyncClient
+    ) -> List[str]:
+        if not self.request.use_random_prompts:
+            return [self.request.prompt]
+
+        prompt_count = max(1, int(self.request.random_prompt_count or 1))
+        instructions = (
+            "Generate {count} unique and diverse user prompts that can be used to benchmark "
+            "a large language model. Return the prompts as a JSON array of strings."
+        ).format(count=prompt_count)
+
+        guidance = self.request.prompt.strip()
+        if guidance:
+            instructions += (
+                " Each prompt should be inspired by the following guidance: "
+                f"{guidance}"
+            )
+
+        metrics = await client.generate(instructions, http_client)
+        prompts = self._extract_prompt_list(metrics.completion, prompt_count)
+
+        if not prompts:
+            raise ValueError("Model did not return any prompts that could be parsed.")
+
+        return prompts
+
+    @staticmethod
+    def _extract_prompt_list(response_text: str, expected: int) -> List[str]:
+        text = response_text.strip()
+        if not text:
+            return []
+
+        if text.startswith("```"):
+            text = BenchmarkExecutor._strip_code_fence(text)
+
+        prompts: List[str] = []
+
+        def try_parse(candidate: str) -> None:
+            nonlocal prompts
+            try:
+                parsed = json.loads(candidate)
+            except json.JSONDecodeError:
+                return
+            if isinstance(parsed, list):
+                cleaned = [
+                    str(item).strip()
+                    for item in parsed
+                    if isinstance(item, str) and item.strip()
+                ]
+                if cleaned:
+                    prompts = cleaned[:expected]
+
+        try_parse(text)
+        if prompts:
+            return prompts
+
+        match = re.search(r"\[[\s\S]*?\]", text)
+        if match:
+            try_parse(match.group(0))
+            if prompts:
+                return prompts
+
+        fallback: List[str] = []
+        for line in text.splitlines():
+            cleaned = line.strip().lstrip("-•* ")
+            if cleaned:
+                fallback.append(cleaned)
+            if len(fallback) >= expected:
+                break
+
+        return fallback[:expected]
+
+    @staticmethod
+    def _strip_code_fence(block: str) -> str:
+        content = block.strip()
+        if content.startswith("```"):
+            parts = content.split("```")
+            if len(parts) >= 3:
+                inner = parts[1]
+                if inner.startswith("json"):
+                    inner = inner[len("json") :]
+                return inner.strip()
+            return content.strip("`").strip()
+        return content
 
 
 async def run_auto_benchmark(request: AutoBenchmarkRequest) -> List[BenchmarkResult]:
