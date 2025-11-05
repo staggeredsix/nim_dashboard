@@ -47,6 +47,9 @@ To build and launch both services locally:
 This command builds the backend and frontend images (compatible with x86_64 and ARM64) and starts them via Docker Compose.
 The dashboard is available at <http://localhost:5173>.
 
+Optional API keys can be injected into the backend container by exporting them before running the script. For example,
+`LLAMACPP_API_KEY=sk-local ./scripts/start.sh` ensures llama.cpp requests from the dashboard include the bearer token.
+
 ### Multi-architecture deployment
 
 `./scripts/deploy.sh` produces ready-to-run images for the backend and frontend. Set `REGISTRY` and `TAG` to push the images

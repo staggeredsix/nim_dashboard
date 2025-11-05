@@ -11,6 +11,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - NGC_API_KEY=${NGC_API_KEY:-}
+      - LLAMACPP_API_KEY=${LLAMACPP_API_KEY:-}
       - DATABASE_URL=sqlite:////data/benchmarks.db
     volumes:
       - backend_data:/data
