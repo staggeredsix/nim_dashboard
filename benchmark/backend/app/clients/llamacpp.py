@@ -154,50 +154,56 @@ class LlamaCppClient(BackendClient):
         inter_token_deltas: List[float] = []
         token_counter = 0
 
-        async with client.stream(
-            "POST",
-            url,
-            json=payload,
-            headers=headers,
-            timeout=self.timeout,
-        ) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if not line:
-                    continue
-                line = line.strip()
-                if not line:
-                    continue
-                if line.startswith("data:"):
-                    line = line[5:].strip()
-                if not line or line == "[DONE]":
-                    continue
-                try:
-                    chunk = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
+        try:
+            async with client.stream(
+                "POST",
+                url,
+                json=payload,
+                headers=headers,
+                timeout=self.timeout,
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if line.startswith("data:"):
+                        line = line[5:].strip()
+                    if not line or line == "[DONE]":
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
 
-                if not isinstance(chunk, dict):
-                    continue
+                    if not isinstance(chunk, dict):
+                        continue
 
-                raw_chunks.append(chunk)
-                text = self._extract_stream_text(chunk)
-                if text:
-                    completion_chunks.append(text)
-                    now = time.perf_counter()
-                    if first_token_timestamp is None:
-                        first_token_timestamp = now
-                        previous_token_timestamp = now
-                    else:
-                        if previous_token_timestamp is not None:
-                            inter_token_deltas.append((now - previous_token_timestamp) * 1000.0)
-                        previous_token_timestamp = now
-                    # Fall back to counting chunks if the backend does not report tokens
-                    token_counter += 1
+                    raw_chunks.append(chunk)
+                    text = self._extract_stream_text(chunk)
+                    if text:
+                        completion_chunks.append(text)
+                        now = time.perf_counter()
+                        if first_token_timestamp is None:
+                            first_token_timestamp = now
+                            previous_token_timestamp = now
+                        else:
+                            if previous_token_timestamp is not None:
+                                inter_token_deltas.append((now - previous_token_timestamp) * 1000.0)
+                            previous_token_timestamp = now
+                        # Fall back to counting chunks if the backend does not report tokens
+                        token_counter += 1
 
-                tokens_hint = self._extract_token_count(chunk)
-                if tokens_hint:
-                    token_counter = max(token_counter, tokens_hint)
+                    tokens_hint = self._extract_token_count(chunk)
+                    if tokens_hint:
+                        token_counter = max(token_counter, tokens_hint)
+        except (httpx.ReadError, httpx.RemoteProtocolError) as exc:
+            if not raw_chunks:
+                raise ValueError("Empty streaming response") from exc
+            # Allow partial streams from llama.cpp when the connection closes early
+            pass
 
         if not raw_chunks:
             raise ValueError("Empty streaming response")
