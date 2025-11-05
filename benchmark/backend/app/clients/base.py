@@ -29,6 +29,7 @@ class RequestMetrics:
     tokens_generated: int
     completion: str
     raw_response: Dict[str, Any]
+    avg_inter_token_latency_ms: float = 0.0
 
 
 class BackendClient(abc.ABC):
@@ -61,7 +62,7 @@ class BackendClient(abc.ABC):
         end = time.perf_counter()
 
         latency_ms = (end - start) * 1000.0
-        ttft_ms = response.get("ttft_ms") or latency_ms
+        ttft_ms = self._extract_ttft(response, latency_ms)
         tokens_generated = self._extract_token_count(response)
         completion = self._extract_completion_text(response)
 
@@ -82,6 +83,8 @@ class BackendClient(abc.ABC):
             response.get("tokens"),
             response.get("num_tokens"),
             response.get("token_count"),
+            response.get("tokens_predicted"),
+            response.get("eval_count"),
         ]
         if "usage" in response:
             usage = response["usage"]
@@ -111,6 +114,49 @@ class BackendClient(abc.ABC):
                         if isinstance(content, str):
                             return content
         return ""
+
+    def _extract_stream_text(self, chunk: Dict[str, Any]) -> str:
+        if "choices" in chunk and isinstance(chunk["choices"], list):
+            for choice in chunk["choices"]:
+                if not isinstance(choice, dict):
+                    continue
+                delta = choice.get("delta")
+                if isinstance(delta, dict):
+                    content = delta.get("content")
+                    if isinstance(content, str):
+                        return content
+                message = choice.get("message")
+                if isinstance(message, dict):
+                    content = message.get("content")
+                    if isinstance(content, str):
+                        return content
+                text = choice.get("text")
+                if isinstance(text, str):
+                    return text
+        content = chunk.get("content")
+        if isinstance(content, str):
+            return content
+        response = chunk.get("response")
+        if isinstance(response, str):
+            return response
+        return ""
+
+    def _extract_ttft(self, response: Dict[str, Any], default: float) -> float:
+        candidate = response.get("ttft_ms")
+        if isinstance(candidate, (int, float)):
+            return float(candidate)
+        timings = response.get("timings")
+        if isinstance(timings, dict):
+            for key in (
+                "ttft_ms",
+                "first_token_ms",
+                "time_to_first_token_ms",
+                "first_token_latency_ms",
+            ):
+                value = timings.get(key)
+                if isinstance(value, (int, float)):
+                    return float(value)
+        return default
 
 
 async def request_with_retry(
