@@ -7,6 +7,28 @@ from functools import lru_cache
 from typing import List, Optional
 
 
+def _running_in_container() -> bool:
+    """Best-effort detection of containerised execution."""
+    if os.path.exists("/.dockerenv"):
+        return True
+    try:
+        with open("/proc/1/cgroup", "r", encoding="utf-8") as handle:
+            data = handle.read()
+    except OSError:
+        return False
+    return "docker" in data or "kubepods" in data
+
+
+def _default_llamacpp_base_url() -> str:
+    """Return a sensible llama.cpp base URL for the current environment."""
+    if _running_in_container():
+        # Docker for Linux does not expose host.docker.internal unless the entry
+        # is explicitly mapped. The docker-compose manifest adds the mapping so
+        # favour it when we detect a containerised runtime.
+        return "http://host.docker.internal:8080"
+    return "http://localhost:8080"
+
+
 def _split_origins(value: str | None) -> List[str]:
     if not value:
         return ["*"]
@@ -29,7 +51,7 @@ class Settings:
     ollama_base_url: str = field(default="http://localhost:11434")
     vllm_base_url: str = field(default="http://localhost:8000")
     nim_base_url: str = field(default="http://localhost:8001")
-    llamacpp_base_url: str = field(default="http://localhost:8080")
+    llamacpp_base_url: str = field(default_factory=_default_llamacpp_base_url)
 
     ngc_api_key: Optional[str] = field(default=None)
     llamacpp_api_key: Optional[str] = field(default=None)
@@ -50,7 +72,9 @@ class Settings:
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
             vllm_base_url=os.getenv("VLLM_BASE_URL", "http://localhost:8000"),
             nim_base_url=os.getenv("NIM_BASE_URL", "http://localhost:8001"),
-            llamacpp_base_url=os.getenv("LLAMACPP_BASE_URL", "http://localhost:8080"),
+            llamacpp_base_url=os.getenv(
+                "LLAMACPP_BASE_URL", _default_llamacpp_base_url()
+            ),
             ngc_api_key=os.getenv("NGC_API_KEY"),
             llamacpp_api_key=os.getenv("LLAMACPP_API_KEY"),
             hf_api_key=os.getenv("HF_API_KEY"),

@@ -33,6 +33,8 @@ export interface BenchmarkFormState {
   model_name: string;
   base_url?: string;
   prompt: string;
+  use_random_prompts: boolean;
+  random_prompt_count: number;
   parameters: BenchmarkParameters;
   backend_parameters: BackendParameters;
 }
@@ -44,13 +46,15 @@ interface Props {
 }
 
 const DEFAULT_PROMPT =
-  'Summarise the importance of TensorRT-LLM when deploying large language models in production environments.';
+  'Summarize the importance of TensorRT-LLM when deploying large language models in production environments.';
 
 export function BenchmarkForm({ backends, isSubmitting, onSubmit }: Props) {
   const [formState, setFormState] = useState<BenchmarkFormState>(() => ({
     provider: backends[0]?.provider ?? 'ollama',
     model_name: 'llama2',
     prompt: DEFAULT_PROMPT,
+    use_random_prompts: false,
+    random_prompt_count: 5,
     parameters: {
       request_count: 10,
       concurrency: 2,
@@ -144,6 +148,46 @@ export function BenchmarkForm({ backends, isSubmitting, onSubmit }: Props) {
             className="min-h-[120px] rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
           />
         </label>
+
+        <div className="md:col-span-2 rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+            <input
+              type="checkbox"
+              checked={formState.use_random_prompts}
+              onChange={(event) =>
+                setFormState((prev) => ({
+                  ...prev,
+                  use_random_prompts: event.target.checked,
+                }))
+              }
+              className="h-4 w-4 rounded border border-slate-700 bg-slate-950"
+            />
+            Generate random prompts with the model
+          </label>
+          <p className="mt-2 text-xs text-slate-400">
+            We will ask the selected model to create additional prompts before benchmarking to reduce repeated
+            completions.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-2 text-sm text-slate-300">
+              Random prompt count
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={formState.random_prompt_count}
+                onChange={(event) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    random_prompt_count: Number(event.target.value) || 1,
+                  }))
+                }
+                className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+                disabled={!formState.use_random_prompts}
+              />
+            </label>
+          </div>
+        </div>
       </div>
 
       <section className="grid gap-4 md:grid-cols-3">

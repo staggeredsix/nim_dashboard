@@ -48,7 +48,15 @@ class BenchmarkRequest(BaseModel):
     provider: BenchmarkProvider
     model_name: str
     base_url: Optional[AnyHttpUrl] = None
-    prompt: str = Field(default="Explain the significance of GPUs for LLM inference.")
+    prompt: str = Field(default="Summarize the importance of TensorRT-LLM when deploying large language models in production environments.")
+    use_random_prompts: bool = Field(
+        default=False,
+        description="When enabled the backend will ask the model to generate random prompts before benchmarking.",
+    )
+    random_prompt_count: conint(ge=1, le=100) = Field(
+        default=5,
+        description="Number of random prompts to request from the model when generation is enabled.",
+    )
     parameters: BenchmarkParameters = Field(default_factory=BenchmarkParameters)
     backend_parameters: BackendSpecificParameters = Field(default_factory=BackendSpecificParameters)
     metadata: Dict[str, Any] = Field(default_factory=dict)

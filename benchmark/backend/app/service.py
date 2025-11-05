@@ -29,6 +29,10 @@ class BenchmarkService:
                         "base_url": str(request.base_url) if request.base_url else None,
                         "parameters": model_dump(request.parameters),
                         "backend_parameters": model_dump(request.backend_parameters),
+                        "prompt_settings": {
+                            "use_random_prompts": request.use_random_prompts,
+                            "random_prompt_count": request.random_prompt_count,
+                        },
                         "metadata": request.metadata,
                     },
                 )
