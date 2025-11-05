@@ -78,66 +78,74 @@ class NimClient(BackendClient):
         token_counter = 0
 
         headers = self._headers()
-        async with client.stream(
-            "POST",
-            url,
-            json=payload,
-            headers=headers,
-            timeout=self.timeout,
-        ) as response:
-            response.raise_for_status()
-            current_event: Optional[str] = None
-            async for raw_line in response.aiter_lines():
-                if raw_line is None:
-                    continue
-                line = raw_line.strip()
-                if not line:
-                    current_event = None
-                    continue
-                if line.startswith(":"):
-                    continue
-                if line.startswith("event:"):
-                    current_event = line[6:].strip()
-                    continue
-                if line.startswith("data:"):
-                    line = line[5:].strip()
-                if not line or line == "[DONE]":
-                    continue
-                try:
-                    chunk = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
+        try:
+            async with client.stream(
+                "POST",
+                url,
+                json=payload,
+                headers=headers,
+                timeout=self.timeout,
+            ) as response:
+                response.raise_for_status()
+                current_event: Optional[str] = None
+                async for raw_line in response.aiter_lines():
+                    if raw_line is None:
+                        continue
+                    line = raw_line.strip()
+                    if not line:
+                        current_event = None
+                        continue
+                    if line.startswith(":"):
+                        continue
+                    if line.startswith("event:"):
+                        current_event = line[6:].strip()
+                        continue
+                    if line.startswith("data:"):
+                        line = line[5:].strip()
+                    if not line or line == "[DONE]":
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
 
-                if current_event and current_event.lower() in {"telemetry", "log", "metrics"}:
-                    telemetry_events.append({"event": current_event, "data": chunk})
-                    continue
+                    if current_event and current_event.lower() in {"telemetry", "log", "metrics"}:
+                        telemetry_events.append({"event": current_event, "data": chunk})
+                        continue
 
-                if not isinstance(chunk, dict):
-                    continue
+                    if not isinstance(chunk, dict):
+                        continue
 
-                raw_chunks.append(chunk)
-                telemetry_payload = chunk.get("telemetry")
-                if isinstance(telemetry_payload, dict):
-                    telemetry_events.append({"event": "telemetry", "data": telemetry_payload})
-                metrics_payload = chunk.get("metrics")
-                if isinstance(metrics_payload, dict):
-                    telemetry_events.append({"event": "metrics", "data": metrics_payload})
-                text = self._extract_stream_text(chunk)
-                if text:
-                    completion_chunks.append(text)
-                    now = time.perf_counter()
-                    if first_token_timestamp is None:
-                        first_token_timestamp = now
-                        previous_token_timestamp = now
-                    else:
-                        if previous_token_timestamp is not None:
-                            inter_token_deltas.append((now - previous_token_timestamp) * 1000.0)
-                        previous_token_timestamp = now
-                    token_counter += 1
+                    raw_chunks.append(chunk)
+                    telemetry_payload = chunk.get("telemetry")
+                    if isinstance(telemetry_payload, dict):
+                        telemetry_events.append({"event": "telemetry", "data": telemetry_payload})
+                    metrics_payload = chunk.get("metrics")
+                    if isinstance(metrics_payload, dict):
+                        telemetry_events.append({"event": "metrics", "data": metrics_payload})
+                    text = self._extract_stream_text(chunk)
+                    if text:
+                        completion_chunks.append(text)
+                        now = time.perf_counter()
+                        if first_token_timestamp is None:
+                            first_token_timestamp = now
+                            previous_token_timestamp = now
+                        else:
+                            if previous_token_timestamp is not None:
+                                inter_token_deltas.append((now - previous_token_timestamp) * 1000.0)
+                            previous_token_timestamp = now
+                        token_counter += 1
 
-                tokens_hint = self._extract_token_count(chunk)
-                if tokens_hint:
-                    token_counter = max(token_counter, tokens_hint)
+                    tokens_hint = self._extract_token_count(chunk)
+                    if tokens_hint:
+                        token_counter = max(token_counter, tokens_hint)
+        except (httpx.ReadError, httpx.RemoteProtocolError) as exc:
+            if not raw_chunks and not telemetry_events:
+                raise ValueError("Empty streaming response from NIM") from exc
+            # Allow graceful handling of partial streams when the server closes
+            # the connection early (e.g., when telemetry flush terminates the
+            # HTTP response) by continuing with the data gathered so far.
+            pass
 
         if not raw_chunks and not telemetry_events:
             raise ValueError("Empty streaming response from NIM")
