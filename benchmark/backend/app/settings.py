@@ -19,14 +19,34 @@ def _running_in_container() -> bool:
     return "docker" in data or "kubepods" in data
 
 
-def _default_llamacpp_base_url() -> str:
-    """Return a sensible llama.cpp base URL for the current environment."""
+def _default_backend_base_url(port: int) -> str:
+    """Generate a base URL for services that may run outside the container."""
     if _running_in_container():
         # Docker for Linux does not expose host.docker.internal unless the entry
         # is explicitly mapped. The docker-compose manifest adds the mapping so
         # favour it when we detect a containerised runtime.
-        return "http://host.docker.internal:8080"
-    return "http://localhost:8080"
+        return f"http://host.docker.internal:{port}"
+    return f"http://localhost:{port}"
+
+
+def _default_ollama_base_url() -> str:
+    """Return a sensible Ollama base URL for the current environment."""
+    return _default_backend_base_url(11434)
+
+
+def _default_vllm_base_url() -> str:
+    """Return a sensible vLLM base URL for the current environment."""
+    return _default_backend_base_url(8000)
+
+
+def _default_nim_base_url() -> str:
+    """Return a sensible NVIDIA NIM base URL for the current environment."""
+    return _default_backend_base_url(8001)
+
+
+def _default_llamacpp_base_url() -> str:
+    """Return a sensible llama.cpp base URL for the current environment."""
+    return _default_backend_base_url(8080)
 
 
 def _split_origins(value: str | None) -> List[str]:
@@ -48,9 +68,9 @@ class Settings:
     request_count: int = field(default=20)
     warmup_requests: int = field(default=2)
 
-    ollama_base_url: str = field(default="http://localhost:11434")
-    vllm_base_url: str = field(default="http://localhost:8000")
-    nim_base_url: str = field(default="http://localhost:8001")
+    ollama_base_url: str = field(default_factory=_default_ollama_base_url)
+    vllm_base_url: str = field(default_factory=_default_vllm_base_url)
+    nim_base_url: str = field(default_factory=_default_nim_base_url)
     llamacpp_base_url: str = field(default_factory=_default_llamacpp_base_url)
 
     ngc_api_key: Optional[str] = field(default=None)
@@ -69,9 +89,11 @@ class Settings:
             request_concurrency=int(os.getenv("REQUEST_CONCURRENCY", "4")),
             request_count=int(os.getenv("REQUEST_COUNT", "20")),
             warmup_requests=int(os.getenv("WARMUP_REQUESTS", "2")),
-            ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-            vllm_base_url=os.getenv("VLLM_BASE_URL", "http://localhost:8000"),
-            nim_base_url=os.getenv("NIM_BASE_URL", "http://localhost:8001"),
+            ollama_base_url=os.getenv(
+                "OLLAMA_BASE_URL", _default_ollama_base_url()
+            ),
+            vllm_base_url=os.getenv("VLLM_BASE_URL", _default_vllm_base_url()),
+            nim_base_url=os.getenv("NIM_BASE_URL", _default_nim_base_url()),
             llamacpp_base_url=os.getenv(
                 "LLAMACPP_BASE_URL", _default_llamacpp_base_url()
             ),
