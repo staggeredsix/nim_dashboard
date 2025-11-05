@@ -14,11 +14,13 @@ class StatsAccumulator:
     latencies: List[float] = field(default_factory=list)
     ttfts: List[float] = field(default_factory=list)
     tokens: List[int] = field(default_factory=list)
+    inter_token_latencies: List[float] = field(default_factory=list)
 
     def add(self, metrics: RequestMetrics) -> None:
         self.latencies.append(metrics.latency_ms)
         self.ttfts.append(metrics.ttft_ms)
         self.tokens.append(metrics.tokens_generated)
+        self.inter_token_latencies.append(metrics.avg_inter_token_latency_ms)
 
     def summarize(self) -> Dict[str, float]:
         if not self.latencies:
@@ -27,6 +29,7 @@ class StatsAccumulator:
                 "latency_p50_ms": 0.0,
                 "latency_p95_ms": 0.0,
                 "ttft_avg_ms": 0.0,
+                "inter_token_latency_avg_ms": 0.0,
                 "tokens_per_second": 0.0,
                 "tokens_total": 0,
             }
@@ -37,12 +40,20 @@ class StatsAccumulator:
         total_tokens = sum(self.tokens)
         total_time_s = sum(self.latencies) / 1000.0
         tps = total_tokens / total_time_s if total_time_s > 0 else 0.0
+        # Filter out zero entries to avoid skew when a backend cannot report streaming metrics
+        non_zero_inter_latencies = [value for value in self.inter_token_latencies if value > 0]
+        avg_inter_latency = (
+            mean(non_zero_inter_latencies)
+            if non_zero_inter_latencies
+            else 0.0
+        )
 
         return {
             "requests_total": len(self.latencies),
             "latency_p50_ms": p50,
             "latency_p95_ms": p95,
             "ttft_avg_ms": mean(self.ttfts),
+            "inter_token_latency_avg_ms": avg_inter_latency,
             "tokens_per_second": tps,
             "tokens_total": total_tokens,
         }

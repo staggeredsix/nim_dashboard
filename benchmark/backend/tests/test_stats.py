@@ -33,4 +33,5 @@ def test_stats_accumulator_summary():
     assert summary["latency_p50_ms"] == 150
     assert summary["latency_p95_ms"] >= summary["latency_p50_ms"]
     assert summary["ttft_avg_ms"] == pytest.approx(55)
+    assert summary["inter_token_latency_avg_ms"] == 0
     assert summary["tokens_per_second"] > 0
