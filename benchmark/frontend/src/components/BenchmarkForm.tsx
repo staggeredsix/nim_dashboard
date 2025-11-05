@@ -242,6 +242,24 @@ export function BenchmarkForm({ backends, isSubmitting, onSubmit }: Props) {
           Advanced backend knobs
         </summary>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={formState.parameters.stream}
+              onChange={(event) =>
+                setFormState((prev) => ({
+                  ...prev,
+                  parameters: {
+                    ...prev.parameters,
+                    stream: event.target.checked,
+                  },
+                }))
+              }
+              className="h-4 w-4 rounded border border-slate-700 bg-slate-950"
+            />
+            Enable streaming responses
+          </label>
+
           {formState.provider === 'nim' && (
             <label className="flex flex-col gap-2 text-sm text-slate-300">
               Deployed NIM model name
