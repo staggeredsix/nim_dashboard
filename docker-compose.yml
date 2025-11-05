@@ -6,12 +6,15 @@ services:
       context: ./benchmark
       dockerfile: backend/Dockerfile
     image: nim-benchmark-backend:latest
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
       - NGC_API_KEY=${NGC_API_KEY:-}
       - LLAMACPP_API_KEY=${LLAMACPP_API_KEY:-}
+      - LLAMACPP_BASE_URL=${LLAMACPP_BASE_URL:-http://host.docker.internal:8080}
       - DATABASE_URL=sqlite:////data/benchmarks.db
     volumes:
       - backend_data:/data
