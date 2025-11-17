@@ -17,6 +17,7 @@ except ImportError:  # pragma: no cover - optional dependency
     HfApi = None  # type: ignore
     snapshot_download = None  # type: ignore
 
+from .ngc_profiles import NgcProfileService
 from .schemas import (
     BenchmarkProvider,
     HuggingFaceDownloadRequest,
@@ -37,8 +38,9 @@ from .utils import model_dump
 class ModelRegistryService:
     """Provides helper methods for model discovery and download flows."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, profile_service: NgcProfileService | None = None) -> None:
         self.settings = settings
+        self.profile_service = profile_service
 
     async def list_ollama_models(self, base_url: Optional[str] = None) -> List[ModelInfo]:
         base_url = (base_url or self.settings.ollama_base_url).rstrip("/")
@@ -78,10 +80,18 @@ class ModelRegistryService:
             metadata=data,
         )
 
+    def _resolve_ngc_key(self, api_key: Optional[str], profile_id: Optional[int]) -> str:
+        if profile_id is not None:
+            if not self.profile_service:
+                raise HTTPException(status_code=500, detail="NGC profile service unavailable")
+            return self.profile_service.resolve_api_key(profile_id)
+        resolved = api_key or self.settings.ngc_api_key
+        if not resolved:
+            raise HTTPException(status_code=400, detail="NGC API key is required to interact with NIM models")
+        return resolved
+
     async def search_nim_models(self, request: NimSearchRequest) -> List[ModelInfo]:
-        api_key = request.api_key or self.settings.ngc_api_key
-        if not api_key:
-            raise HTTPException(status_code=400, detail="NGC API key is required to query NIM models")
+        api_key = self._resolve_ngc_key(request.api_key, request.profile_id)
 
         url = f"https://api.ngc.nvidia.com/v2/models/org/{request.organization}"
         params = {"pageSize": request.limit}
@@ -122,9 +132,7 @@ class ModelRegistryService:
         return models
 
     async def pull_nim_model(self, request: NimPullRequest) -> ModelActionResponse:
-        api_key = request.api_key or self.settings.ngc_api_key
-        if not api_key:
-            raise HTTPException(status_code=400, detail="NGC API key is required to download NIM models")
+        api_key = self._resolve_ngc_key(request.api_key, request.profile_id)
 
         if shutil.which("docker") is None:
             raise HTTPException(status_code=500, detail="Docker CLI is required to pull NIM containers")
@@ -138,6 +146,18 @@ class ModelRegistryService:
 
         await _run_command(login_cmd, input_data=f"{api_key}\n")
         pull_output = await _run_command(pull_cmd)
+
+        if request.profile_id is not None and self.profile_service:
+            try:
+                self.profile_service.record_download(
+                    request.profile_id,
+                    repository,
+                    request.tag,
+                )
+            except HTTPException:
+                # Surface profile errors but avoid masking a successful pull with
+                # bookkeeping issues.
+                pass
 
         return ModelActionResponse(status="completed", detail="Docker pull succeeded", metadata={"output": pull_output})
 

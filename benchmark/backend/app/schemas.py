@@ -32,6 +32,14 @@ class BenchmarkParameters(BaseModel):
     repetition_penalty: float = Field(default=1.0, ge=0.0)
     stream: bool = Field(default=True)
     timeout: float = Field(default=120.0, gt=0)
+    enable_accuracy_eval: bool = Field(
+        default=False,
+        description="When enabled the executor will run a lightweight accuracy harness.",
+    )
+    enable_agentic_eval: bool = Field(
+        default=False,
+        description="When enabled the executor will score multi-step agentic behaviours.",
+    )
 
 
 class BackendSpecificParameters(BaseModel):
@@ -147,6 +155,7 @@ class ModelRuntimeListResponse(BaseModel):
 
 class NimSearchRequest(BaseModel):
     api_key: Optional[str] = None
+    profile_id: Optional[int] = Field(default=None, description="Optional saved NGC profile to use")
     query: Optional[str] = Field(default=None, description="Filter models by a search term.")
     limit: conint(ge=1, le=200) = Field(default=25)
     organization: str = Field(default="nvidia", description="NGC organization to inspect.")
@@ -156,6 +165,7 @@ class NimPullRequest(BaseModel):
     model_name: str = Field(description="Container image name, e.g. nvcr.io/nim/llama2-13b.")
     tag: Optional[str] = Field(default="latest")
     api_key: Optional[str] = None
+    profile_id: Optional[int] = Field(default=None)
 
 
 class HuggingFaceSearchRequest(BaseModel):
@@ -175,3 +185,83 @@ class ModelActionResponse(BaseModel):
     status: str
     detail: str
     metadata: Optional[Dict[str, Any]] = None
+
+
+class NgcProfileCreateRequest(BaseModel):
+    name: str = Field(..., description="Friendly label for the API key.")
+    usage: Optional[str] = Field(default=None, description="Where or why this key is used.")
+    api_key: str = Field(..., description="The raw NGC API key.")
+
+
+class NgcDownloadHistoryItem(BaseModel):
+    id: int
+    model_name: str
+    tag: Optional[str]
+    downloaded_at: str
+
+
+class NgcProfileResponse(BaseModel):
+    id: int
+    name: str
+    usage: Optional[str]
+    masked_key: str
+    created_at: str
+    last_used_at: Optional[str]
+    recent_downloads: List[NgcDownloadHistoryItem]
+
+
+class WorkflowStage(str, Enum):
+    DOWNLOAD = "download"
+    DEPLOY = "deploy"
+    OPTIMIZE = "optimize"
+    TEST = "test"
+
+
+class WorkflowStep(BaseModel):
+    label: str
+    detail: str
+    command: Optional[str] = None
+
+
+class QuantizationStrategy(BaseModel):
+    name: str
+    description: str
+    command: Optional[str] = None
+
+
+class ApiSimulation(BaseModel):
+    method: str
+    endpoint: str
+    description: str
+    payload: Dict[str, Any]
+
+
+class BackendWorkflowDefinition(BaseModel):
+    provider: BenchmarkProvider
+    name: str
+    description: str
+    download: List[WorkflowStep]
+    deploy: List[WorkflowStep]
+    optimize: List[WorkflowStep]
+    test: List[WorkflowStep]
+    quantization_strategies: List[QuantizationStrategy]
+    api_simulation: ApiSimulation
+
+
+class WorkflowSimulationRequest(BaseModel):
+    provider: BenchmarkProvider
+    stage: WorkflowStage
+
+
+class WorkflowSimulationStep(BaseModel):
+    label: str
+    status: str
+    detail: str
+    command: Optional[str] = None
+
+
+class WorkflowSimulationResponse(BaseModel):
+    provider: BenchmarkProvider
+    stage: WorkflowStage
+    steps: List[WorkflowSimulationStep]
+    api_simulation: ApiSimulation

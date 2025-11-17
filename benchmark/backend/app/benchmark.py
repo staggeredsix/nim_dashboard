@@ -20,6 +20,7 @@ except ImportError:  # pragma: no cover - fallback when dependency missing
 
 from .clients import create_client
 from .clients.base import BackendClient, RequestMetrics
+from .evaluations import run_accuracy_suite, run_agentic_suite
 from .schemas import AutoBenchmarkRequest, BenchmarkParameters, BenchmarkRequest, BenchmarkResult
 from .utils import model_copy, model_dump
 from .settings import settings
@@ -93,6 +94,8 @@ class BenchmarkExecutor:
         async for metrics in self.iter_metrics():
             accumulator.add(metrics)
 
+        evaluation_metrics = await self._maybe_run_evaluations()
+
         return BenchmarkResult(
             run_id=run_id or 0,
             provider=self.request.provider,
@@ -108,7 +111,7 @@ class BenchmarkExecutor:
                 "parameters": model_dump(self.request.parameters),
                 "backend_parameters": model_dump(self.request.backend_parameters),
             },
-            metrics=accumulator.summarize(),
+            metrics={**accumulator.summarize(), **evaluation_metrics},
         )
 
     async def _prepare_prompts(
@@ -196,6 +199,25 @@ class BenchmarkExecutor:
                 return inner.strip()
             return content.strip("`").strip()
         return content
+
+    async def _maybe_run_evaluations(self) -> Dict[str, Any]:
+        params = self.request.parameters
+        if not (params.enable_accuracy_eval or params.enable_agentic_eval):
+            return {}
+
+        client = self._create_client()
+        limits = httpx.Limits(max_connections=1)
+        results: Dict[str, Any] = {}
+        async with httpx.AsyncClient(limits=limits, timeout=self.timeout) as http_client:
+            if params.enable_accuracy_eval:
+                accuracy = await run_accuracy_suite(client, http_client)
+                results["accuracy_score"] = round(accuracy.score, 4)
+                results["accuracy_samples"] = accuracy.details
+            if params.enable_agentic_eval:
+                agentic = await run_agentic_suite(client, http_client)
+                results["agentic_score"] = round(agentic.score, 4)
+                results["agentic_samples"] = agentic.details
+        return results
 
 
 async def run_auto_benchmark(request: AutoBenchmarkRequest) -> List[BenchmarkResult]:

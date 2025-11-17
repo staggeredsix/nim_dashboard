@@ -19,6 +19,8 @@ export interface BenchmarkParameters {
   repetition_penalty: number;
   stream: boolean;
   timeout: number;
+  enable_accuracy_eval: boolean;
+  enable_agentic_eval: boolean;
 }
 
 export interface BackendParameters {
@@ -65,6 +67,8 @@ export function BenchmarkForm({ backends, isSubmitting, onSubmit }: Props) {
       repetition_penalty: 1.0,
       stream: true,
       timeout: 120,
+      enable_accuracy_eval: false,
+      enable_agentic_eval: false,
     },
     backend_parameters: {},
   }));
@@ -258,6 +262,42 @@ export function BenchmarkForm({ backends, isSubmitting, onSubmit }: Props) {
               className="h-4 w-4 rounded border border-slate-700 bg-slate-950"
             />
             Enable streaming responses
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={formState.parameters.enable_accuracy_eval}
+              onChange={(event) =>
+                setFormState((prev) => ({
+                  ...prev,
+                  parameters: {
+                    ...prev.parameters,
+                    enable_accuracy_eval: event.target.checked,
+                  },
+                }))
+              }
+              className="h-4 w-4 rounded border border-slate-700 bg-slate-950"
+            />
+            Accuracy smoke test
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={formState.parameters.enable_agentic_eval}
+              onChange={(event) =>
+                setFormState((prev) => ({
+                  ...prev,
+                  parameters: {
+                    ...prev.parameters,
+                    enable_agentic_eval: event.target.checked,
+                  },
+                }))
+              }
+              className="h-4 w-4 rounded border border-slate-700 bg-slate-950"
+            />
+            Agentic performance test
           </label>
 
           {formState.provider === 'nim' && (

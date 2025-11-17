@@ -1,5 +1,13 @@
 import { History } from 'lucide-react';
 
+export type BenchmarkMetrics = Record<string, unknown> & {
+  latency_p95_ms?: number;
+  tokens_per_second?: number;
+  tokens_total?: number;
+  accuracy_score?: number;
+  agentic_score?: number;
+};
+
 export type BenchmarkHistoryItem = {
   id: number;
   provider: string;
@@ -7,7 +15,7 @@ export type BenchmarkHistoryItem = {
   status: string;
   created_at: string;
   completed_at?: string | null;
-  metrics?: Record<string, number> | null;
+  metrics?: BenchmarkMetrics | null;
   error?: string | null;
 };
 
@@ -43,6 +51,7 @@ export function BenchmarkHistory({ runs, isLoading, onRefresh }: Props) {
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">Tokens / TPS</th>
               <th className="px-3 py-2">Latency P95</th>
+              <th className="px-3 py-2">Evaluation</th>
             </tr>
           </thead>
           <tbody>
@@ -74,21 +83,26 @@ export function BenchmarkHistory({ runs, isLoading, onRefresh }: Props) {
                   {run.error && <p className="mt-1 text-xs text-red-400">{run.error}</p>}
                 </td>
                 <td className="px-3 py-2 text-slate-200">
-                  {run.metrics ? (
-                    <div className="flex flex-col">
-                      <span className="text-sm font-medium">
-                        {run.metrics.tokens_total ?? 0} tokens
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        {run.metrics.tokens_per_second?.toFixed(2) ?? '0.00'} tokens/s
-                      </span>
-                    </div>
-                  ) : (
+                {run.metrics ? (
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium">
+                      {run.metrics.tokens_total ?? 0} tokens
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      {run.metrics.tokens_per_second?.toFixed(2) ?? '0.00'} tokens/s
+                    </span>
+                  </div>
+                ) : (
                     <span className="text-slate-500">—</span>
                   )}
                 </td>
                 <td className="px-3 py-2 text-slate-200">
-                  {run.metrics?.latency_p95_ms ? `${run.metrics.latency_p95_ms.toFixed(1)} ms` : '—'}
+                  {typeof run.metrics?.latency_p95_ms === 'number'
+                    ? `${(run.metrics.latency_p95_ms as number).toFixed(1)} ms`
+                    : '—'}
+                </td>
+                <td className="px-3 py-2 text-slate-200">
+                  {renderEvaluation(run.metrics)}
                 </td>
               </tr>
             ))}
@@ -96,6 +110,27 @@ export function BenchmarkHistory({ runs, isLoading, onRefresh }: Props) {
         </table>
       </div>
     </section>
+  );
+}
+
+function renderEvaluation(metrics?: BenchmarkMetrics | null) {
+  if (!metrics) {
+    return <span className="text-slate-500">—</span>;
+  }
+  const accuracy = typeof metrics.accuracy_score === 'number' ? metrics.accuracy_score : undefined;
+  const agentic = typeof metrics.agentic_score === 'number' ? metrics.agentic_score : undefined;
+  if (accuracy === undefined && agentic === undefined) {
+    return <span className="text-slate-500">—</span>;
+  }
+  return (
+    <div className="flex flex-col text-xs">
+      {accuracy !== undefined && (
+        <span className="text-emerald-300">Accuracy: {(accuracy * 100).toFixed(1)}%</span>
+      )}
+      {agentic !== undefined && (
+        <span className="text-sky-300">Agentic: {(agentic * 100).toFixed(1)}%</span>
+      )}
+    </div>
   );
 }
 

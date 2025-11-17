@@ -4,11 +4,14 @@ interface MetricSummaryProps {
   totalRuns: number;
   lastLatency?: number;
   lastTps?: number;
+  lastAccuracy?: number;
+  lastAgentic?: number;
 }
 
-export function SummaryCards({ totalRuns, lastLatency, lastTps }: MetricSummaryProps) {
+export function SummaryCards({ totalRuns, lastLatency, lastTps, lastAccuracy, lastAgentic }: MetricSummaryProps) {
+  const evaluationLabel = buildEvaluationLabel(lastAccuracy, lastAgentic);
   return (
-    <div className="grid gap-4 sm:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <MetricCard
         title="Completed benchmarks"
         value={totalRuns.toString()}
@@ -27,8 +30,23 @@ export function SummaryCards({ totalRuns, lastLatency, lastTps }: MetricSummaryP
         description="Tokens per second computed from the latest run"
         icon={<Activity className="h-5 w-5" />}
       />
+      <MetricCard
+        title="Evaluation signals"
+        value={evaluationLabel}
+        description="Accuracy + agentic test harness toggles"
+        icon={<Activity className="h-5 w-5" />}
+      />
     </div>
   );
+}
+
+function buildEvaluationLabel(accuracy?: number, agentic?: number) {
+  const formattedAccuracy = accuracy !== undefined ? `Acc ${(accuracy * 100).toFixed(0)}%` : null;
+  const formattedAgentic = agentic !== undefined ? `Agent ${(agentic * 100).toFixed(0)}%` : null;
+  if (!formattedAccuracy && !formattedAgentic) {
+    return '—';
+  }
+  return [formattedAccuracy, formattedAgentic].filter(Boolean).join(' / ');
 }
 
 interface CardProps {
