@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List
 
 from fastapi import HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import select
 
 from .database import get_session
 from .models import NgcApiKeyProfile, NgcModelDownload
@@ -44,10 +44,13 @@ class NgcProfileService:
 
     def delete_profile(self, profile_id: int) -> ModelActionResponse:
         with get_session() as session:
-            statement = delete(NgcApiKeyProfile).where(NgcApiKeyProfile.id == profile_id)
-            result = session.execute(statement)
-            if result.rowcount == 0:
+            profile = session.get(NgcApiKeyProfile, profile_id)
+            if not profile:
                 raise HTTPException(status_code=404, detail="Profile not found")
+
+            # Using the ORM relationship delete ensures related downloads are
+            # removed thanks to the cascade configured on ``NgcApiKeyProfile``.
+            session.delete(profile)
         return ModelActionResponse(status="deleted", detail="NGC profile removed", metadata={"id": profile_id})
 
     def resolve_api_key(self, profile_id: int) -> str:
