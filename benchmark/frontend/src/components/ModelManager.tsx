@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Database, Download, Play, RefreshCw, ShieldCheck, Square, Zap } from 'lucide-react';
+import { Database, Download, Play, RefreshCw, ServerCog, ShieldCheck, Square, Zap } from 'lucide-react';
 
 import type { BackendMetadata } from './BenchmarkForm';
-import { getJson, postJson } from '../lib/api';
+import { deleteJson, getJson, postJson } from '../lib/api';
 
 interface ModelInfo {
   name: string;
@@ -33,6 +33,62 @@ interface ModelRuntimeInfo {
 
 interface ModelRuntimeListResponse {
   runtimes: ModelRuntimeInfo[];
+}
+
+interface NgcDownloadHistory {
+  id: number;
+  model_name: string;
+  tag?: string | null;
+  downloaded_at: string;
+}
+
+interface NgcProfile {
+  id: number;
+  name: string;
+  usage?: string | null;
+  masked_key: string;
+  last_used_at?: string | null;
+  recent_downloads: NgcDownloadHistory[];
+}
+
+interface WorkflowStepDefinition {
+  label: string;
+  detail: string;
+  command?: string | null;
+}
+
+interface QuantizationStrategy {
+  name: string;
+  description: string;
+  command?: string | null;
+}
+
+interface ApiSimulation {
+  method: string;
+  endpoint: string;
+  description: string;
+  payload: Record<string, unknown>;
+}
+
+type WorkflowStageKey = 'download' | 'deploy' | 'optimize' | 'test';
+
+interface BackendWorkflowDefinition {
+  provider: ProviderKey;
+  name: string;
+  description: string;
+  download: WorkflowStepDefinition[];
+  deploy: WorkflowStepDefinition[];
+  optimize: WorkflowStepDefinition[];
+  test: WorkflowStepDefinition[];
+  quantization_strategies: QuantizationStrategy[];
+  api_simulation: ApiSimulation;
+}
+
+interface WorkflowSimulationResponse {
+  provider: ProviderKey;
+  stage: WorkflowStageKey;
+  steps: Array<WorkflowStepDefinition & { status: string }>;
+  api_simulation: ApiSimulation;
 }
 
 type ProviderKey = 'ollama' | 'nim' | 'vllm' | 'llamacpp';
@@ -70,6 +126,19 @@ export function ModelManager({ backends }: Props) {
     () => backends.find((backend) => backend.provider === 'llamacpp')?.default_base_url ?? 'http://localhost:8080',
     [backends]
   );
+  const ngcProfilesQuery = useQuery<NgcProfile[]>({
+    queryKey: ['ngc-profiles'],
+    queryFn: () => getJson<NgcProfile[]>('/api/ngc/profiles'),
+    staleTime: 5 * 60 * 1000,
+  });
+  const workflowsQuery = useQuery<BackendWorkflowDefinition[]>({
+    queryKey: ['workflows'],
+    queryFn: () => getJson<BackendWorkflowDefinition[]>('/api/workflows'),
+    staleTime: 5 * 60 * 1000,
+  });
+  const [selectedProfileId, setSelectedProfileId] = useState<number | ''>('');
+  const [profileForm, setProfileForm] = useState({ name: '', usage: '', api_key: '' });
+  const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [runtimeInputs, setRuntimeInputs] = useState<Record<ProviderKey, RuntimeInputState>>({
     ollama: { baseUrl: defaultOllamaUrl, model: 'llama3' },
     nim: { baseUrl: defaultNimUrl, model: 'nvcr.io/nim/nemotron-3-8b-instruct' },
@@ -86,6 +155,11 @@ export function ModelManager({ backends }: Props) {
   const [ollamaModel, setOllamaModel] = useState('llama3');
   const [ollamaModels, setOllamaModels] = useState<ModelInfo[]>([]);
   const [ollamaMessage, setOllamaMessage] = useState<string | null>(null);
+  const [workflowProvider, setWorkflowProvider] = useState<ProviderKey>('nim');
+  const [workflowStage, setWorkflowStage] = useState<WorkflowStageKey>('download');
+  const [workflowSimulation, setWorkflowSimulation] = useState<WorkflowSimulationResponse | null>(null);
+  const [workflowMessage, setWorkflowMessage] = useState<string | null>(null);
+  const workflowStages: WorkflowStageKey[] = ['download', 'deploy', 'optimize', 'test'];
 
   useEffect(() => {
     setRuntimeInputs((prev) => ({
@@ -99,6 +173,33 @@ export function ModelManager({ backends }: Props) {
   useEffect(() => {
     setOllamaBaseUrl(defaultOllamaUrl);
   }, [defaultOllamaUrl]);
+
+  useEffect(() => {
+    const profiles = ngcProfilesQuery.data ?? [];
+    if (!profiles.length) {
+      setSelectedProfileId('');
+      return;
+    }
+    if (selectedProfileId === '') {
+      setSelectedProfileId(profiles[0].id);
+    } else if (!profiles.find((profile) => profile.id === selectedProfileId)) {
+      setSelectedProfileId(profiles[0].id);
+    }
+  }, [ngcProfilesQuery.data, selectedProfileId]);
+
+  useEffect(() => {
+    const workflows = workflowsQuery.data ?? [];
+    if (!workflows.length) {
+      return;
+    }
+    if (!workflows.find((workflow) => workflow.provider === workflowProvider)) {
+      setWorkflowProvider(workflows[0].provider);
+    }
+  }, [workflowsQuery.data, workflowProvider]);
+
+  useEffect(() => {
+    setWorkflowStage('download');
+  }, [workflowProvider]);
 
   const fetchOllamaModels = useMutation({
     mutationFn: async () => {
@@ -142,6 +243,7 @@ export function ModelManager({ backends }: Props) {
     mutationFn: async () =>
       postJson<ModelListResponse>('/api/models/nim/search', {
         api_key: ngcKey || undefined,
+        profile_id: typeof selectedProfileId === 'number' ? selectedProfileId : undefined,
         query: nimQuery || undefined,
         limit: 25,
         organization: nimOrg || 'nvidia',
@@ -161,12 +263,37 @@ export function ModelManager({ backends }: Props) {
         model_name: nimImage,
         tag: nimTag || undefined,
         api_key: ngcKey || undefined,
+        profile_id: typeof selectedProfileId === 'number' ? selectedProfileId : undefined,
       }),
     onSuccess: (data) => {
       setNimMessage(data.detail);
     },
     onError: (error) => {
       setNimMessage(error instanceof Error ? error.message : 'Failed to pull NIM container');
+    },
+  });
+
+  const createNgcProfile = useMutation<NgcProfile, Error, typeof profileForm>({
+    mutationFn: (payload) => postJson<NgcProfile>('/api/ngc/profiles', payload),
+    onSuccess: () => {
+      setProfileMessage('Profile saved');
+      setProfileForm({ name: '', usage: '', api_key: '' });
+      queryClient.invalidateQueries({ queryKey: ['ngc-profiles'] });
+    },
+    onError: (error) => {
+      setProfileMessage(error instanceof Error ? error.message : 'Unable to save profile');
+    },
+  });
+
+  const deleteNgcProfile = useMutation<ModelActionResponse, Error, number>({
+    mutationFn: (profileId) => deleteJson<ModelActionResponse>(`/api/ngc/profiles/${profileId}`),
+    onSuccess: () => {
+      setProfileMessage('Profile removed');
+      queryClient.invalidateQueries({ queryKey: ['ngc-profiles'] });
+      setSelectedProfileId('');
+    },
+    onError: (error) => {
+      setProfileMessage(error instanceof Error ? error.message : 'Unable to delete profile');
     },
   });
 
@@ -208,11 +335,26 @@ export function ModelManager({ backends }: Props) {
     },
   });
 
+  const simulateWorkflowMutation = useMutation<WorkflowSimulationResponse, Error, { provider: ProviderKey; stage: WorkflowStageKey }>({
+    mutationFn: (payload) => postJson<WorkflowSimulationResponse>('/api/workflows/simulate', payload),
+    onSuccess: (data) => {
+      setWorkflowSimulation(data);
+      setWorkflowMessage(null);
+    },
+    onError: (error) => {
+      setWorkflowMessage(error instanceof Error ? error.message : 'Unable to simulate workflow');
+    },
+  });
+
   const runtimeQuery = useQuery<ModelRuntimeListResponse>({
     queryKey: ['model-runtimes'],
     queryFn: () => getJson<ModelRuntimeListResponse>('/api/models/runtimes'),
     refetchInterval: 5000,
   });
+  const ngcProfiles = ngcProfilesQuery.data ?? [];
+  const selectedProfile =
+    typeof selectedProfileId === 'number' ? ngcProfiles.find((profile) => profile.id === selectedProfileId) : undefined;
+  const selectedWorkflow = workflowsQuery.data?.find((workflow) => workflow.provider === workflowProvider);
 
   const runtimeProviders: Array<{
     key: ProviderKey;
@@ -363,8 +505,85 @@ export function ModelManager({ backends }: Props) {
           description="Authenticate with an NGC API key to search and pull NIM containers."
         >
           <div className="space-y-3 text-sm">
+            <div className="grid gap-3 lg:grid-cols-2">
+              <label className="flex flex-col gap-1 text-slate-300">
+                <span>NGC API key profile</span>
+                <select
+                  value={selectedProfileId === '' ? '' : selectedProfileId}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSelectedProfileId(value === '' ? '' : Number(value));
+                  }}
+                  className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                >
+                  <option value="">Manual / temporary key</option>
+                  {ngcProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.name} ({profile.masked_key})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex flex-col gap-2 rounded-md border border-dashed border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-400">
+                {selectedProfile ? (
+                  <>
+                    <p className="text-slate-300">
+                      {selectedProfile.usage ?? 'Custom profile'} · last used{' '}
+                      {selectedProfile.last_used_at ? new Date(selectedProfile.last_used_at).toLocaleString() : 'never'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        typeof selectedProfileId === 'number' && deleteNgcProfile.mutate(selectedProfileId)
+                      }
+                      disabled={deleteNgcProfile.isPending}
+                      className="inline-flex w-fit items-center gap-1 rounded-md border border-slate-700 px-2 py-1 text-slate-200"
+                    >
+                      <Square className="h-3.5 w-3.5" /> Remove profile
+                    </button>
+                  </>
+                ) : (
+                  <p>Select a saved profile or fall back to a temporary key.</p>
+                )}
+              </div>
+            </div>
+            {selectedProfile && (
+              <ProfileDownloadsList downloads={selectedProfile.recent_downloads} />
+            )}
+            <details className="rounded-md border border-slate-800 bg-slate-950/40 p-3">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-200">Save a new profile</summary>
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <input
+                  placeholder="Profile name"
+                  value={profileForm.name}
+                  onChange={(event) => setProfileForm((prev) => ({ ...prev, name: event.target.value }))}
+                  className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                />
+                <input
+                  placeholder="Usage (e.g. NVIDIA Private Registry)"
+                  value={profileForm.usage}
+                  onChange={(event) => setProfileForm((prev) => ({ ...prev, usage: event.target.value }))}
+                  className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                />
+                <input
+                  type="password"
+                  placeholder="NGC API key"
+                  value={profileForm.api_key}
+                  onChange={(event) => setProfileForm((prev) => ({ ...prev, api_key: event.target.value }))}
+                  className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => createNgcProfile.mutate(profileForm)}
+                disabled={createNgcProfile.isPending}
+                className="mt-3 inline-flex items-center gap-2 rounded-md bg-nvidia px-3 py-1.5 text-xs font-semibold text-slate-950"
+              >
+                Save profile
+              </button>
+            </details>
             <label className="flex flex-col gap-1 text-slate-300">
-              NGC API key
+              Temporary API key override
               <input
                 type="password"
                 value={ngcKey}
@@ -431,6 +650,7 @@ export function ModelManager({ backends }: Props) {
               <Download className="h-4 w-4" />
               Docker pull
             </button>
+            {profileMessage && <p className="text-xs text-amber-400">{profileMessage}</p>}
             {nimMessage && <p className="text-xs text-amber-400">{nimMessage}</p>}
             <ModelList models={nimModels} emptyLabel="No catalog entries yet." />
           </div>
@@ -557,6 +777,85 @@ export function ModelManager({ backends }: Props) {
           </div>
         </ProviderCard>
       </div>
+
+      <div className="mx-auto w-full max-w-6xl">
+        <ProviderCard
+          title="Backend workflows"
+          icon={<ServerCog className="h-5 w-5 text-nvidia" />}
+          description="Simulate download, deploy, optimize, and test flows for each backend."
+        >
+          <div className="space-y-4 text-sm">
+            {workflowsQuery.isLoading && <p className="text-xs text-slate-500">Loading workflows…</p>}
+            {workflowsQuery.isError && (
+              <p className="text-xs text-amber-400">
+                {workflowsQuery.error instanceof Error
+                  ? workflowsQuery.error.message
+                  : 'Unable to load workflow catalog'}
+              </p>
+            )}
+            {workflowsQuery.data && workflowsQuery.data.length > 0 && (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  {workflowsQuery.data.map((workflow) => (
+                    <button
+                      key={workflow.provider}
+                      type="button"
+                      onClick={() => {
+                        setWorkflowProvider(workflow.provider);
+                        setWorkflowSimulation(null);
+                      }}
+                      className={`rounded-md border px-3 py-1 text-xs font-semibold ${
+                        workflow.provider === workflowProvider
+                          ? 'border-nvidia text-nvidia'
+                          : 'border-slate-700 text-slate-300'
+                      }`}
+                    >
+                      {workflow.name}
+                    </button>
+                  ))}
+                </div>
+                {selectedWorkflow && (
+                  <>
+                    <p className="text-xs text-slate-400">{selectedWorkflow.description}</p>
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      {workflowStages.map((stage) => (
+                        <button
+                          key={stage}
+                          type="button"
+                          onClick={() => setWorkflowStage(stage)}
+                          className={`rounded-md border px-3 py-1 capitalize ${
+                            workflowStage === stage ? 'border-nvidia text-nvidia' : 'border-slate-700 text-slate-300'
+                          }`}
+                        >
+                          {stage}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          simulateWorkflowMutation.mutate({ provider: workflowProvider, stage: workflowStage })
+                        }
+                        disabled={simulateWorkflowMutation.isPending}
+                        className="inline-flex items-center gap-2 rounded-md bg-nvidia px-3 py-1 font-semibold text-slate-950"
+                      >
+                        <ServerCog className="h-4 w-4" />
+                        {simulateWorkflowMutation.isPending ? 'Simulating…' : 'Simulate stage'}
+                      </button>
+                    </div>
+                    {workflowMessage && <p className="text-xs text-amber-400">{workflowMessage}</p>}
+                    <WorkflowDetails
+                      workflow={selectedWorkflow}
+                      stage={workflowStage}
+                      simulation={workflowSimulation}
+                      isSimulating={simulateWorkflowMutation.isPending}
+                    />
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </ProviderCard>
+      </div>
     </section>
   );
 }
@@ -607,6 +906,33 @@ function ModelList({ models, emptyLabel }: ModelListProps) {
   );
 }
 
+function ProfileDownloadsList({ downloads }: { downloads: NgcDownloadHistory[] }) {
+  return (
+    <div className="rounded-md border border-slate-800 bg-slate-950/40 p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+        Models downloaded with this key
+      </p>
+      {downloads.length === 0 ? (
+        <p className="mt-2 text-xs text-slate-500">No tracked downloads yet.</p>
+      ) : (
+        <ul className="mt-2 space-y-1 text-xs text-slate-300">
+          {downloads.map((item) => (
+            <li key={item.id} className="flex items-center justify-between gap-4">
+              <span>
+                {item.model_name}
+                {item.tag ? `:${item.tag}` : ''}
+              </span>
+              <span className="text-slate-500">
+                {new Date(item.downloaded_at).toLocaleDateString()}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 interface RuntimeControlRowProps {
   label: string;
   input: RuntimeInputState;
@@ -619,6 +945,80 @@ interface RuntimeControlRowProps {
   isStopping: boolean;
   message: string | null;
   runningModels: ModelRuntimeInfo[];
+}
+
+interface WorkflowDetailsProps {
+  workflow: BackendWorkflowDefinition;
+  stage: WorkflowStageKey;
+  simulation: WorkflowSimulationResponse | null;
+  isSimulating: boolean;
+}
+
+function WorkflowDetails({ workflow, stage, simulation, isSimulating }: WorkflowDetailsProps) {
+  const stageSteps = workflow[stage] as WorkflowStepDefinition[];
+  const activeSimulation = simulation && simulation.stage === stage ? simulation : null;
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <div className="rounded-md border border-slate-800 bg-slate-950/60 p-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{stage} steps</p>
+        <ul className="mt-3 space-y-2 text-xs text-slate-300">
+          {stageSteps.map((step) => (
+            <li key={step.label} className="rounded-md border border-slate-800/80 bg-slate-950/70 p-3">
+              <p className="font-semibold text-slate-100">{step.label}</p>
+              <p className="text-slate-400">{step.detail}</p>
+              {step.command && (
+                <code className="mt-2 block whitespace-pre-wrap rounded bg-slate-900/80 px-2 py-1 text-[11px] text-slate-400">
+                  {step.command}
+                </code>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="space-y-3">
+        <div className="rounded-md border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Quantization strategies</p>
+          <ul className="mt-2 space-y-2">
+            {workflow.quantization_strategies.map((strategy) => (
+              <li key={strategy.name}>
+                <p className="font-semibold text-slate-100">{strategy.name}</p>
+                <p className="text-slate-400">{strategy.description}</p>
+                {strategy.command && (
+                  <code className="mt-1 block whitespace-pre-wrap rounded bg-slate-900/80 px-2 py-1 text-[11px] text-slate-400">
+                    {strategy.command}
+                  </code>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="rounded-md border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">API simulation</p>
+          <p className="text-slate-400">{workflow.api_simulation.description}</p>
+          <code className="mt-2 block whitespace-pre-wrap rounded bg-slate-900/80 px-2 py-1 text-[11px] text-slate-400">
+            {workflow.api_simulation.method} {workflow.api_simulation.endpoint}
+            {'\n'}
+            {JSON.stringify(workflow.api_simulation.payload, null, 2)}
+          </code>
+        </div>
+        <div className="rounded-md border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Simulation result</p>
+          {isSimulating && <p className="text-slate-400">Simulating…</p>}
+          {!isSimulating && !activeSimulation && <p className="text-slate-500">No simulation yet.</p>}
+          {activeSimulation && (
+            <ul className="mt-2 space-y-1">
+              {activeSimulation.steps.map((step) => (
+                <li key={`${step.label}-${step.status}`} className="flex items-center justify-between rounded border border-slate-800/60 bg-slate-950/70 px-2 py-1">
+                  <span>{step.label}</span>
+                  <span className="text-emerald-300">{step.status}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function RuntimeControlRow({

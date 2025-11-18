@@ -44,6 +44,16 @@ export default function App() {
     return historyQuery.data.runs.find((run) => run.status === 'completed') ?? historyQuery.data.runs[0];
   }, [historyQuery.data]);
 
+  const latestAccuracy = useMemo(() => {
+    const value = latestRun?.metrics?.accuracy_score;
+    return typeof value === 'number' ? value : undefined;
+  }, [latestRun]);
+
+  const latestAgentic = useMemo(() => {
+    const value = latestRun?.metrics?.agentic_score;
+    return typeof value === 'number' ? value : undefined;
+  }, [latestRun]);
+
   if (backendsQuery.isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-200">
@@ -71,6 +81,8 @@ export default function App() {
           totalRuns={historyQuery.data?.total ?? 0}
           lastLatency={latestRun?.metrics?.latency_p95_ms ?? undefined}
           lastTps={latestRun?.metrics?.tokens_per_second ?? undefined}
+          lastAccuracy={latestAccuracy}
+          lastAgentic={latestAgentic}
         />
 
         <ModelManager backends={backendsQuery.data ?? []} />

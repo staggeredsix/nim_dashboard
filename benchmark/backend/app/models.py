@@ -4,8 +4,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from sqlalchemy import JSON, Column, DateTime, Enum, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.sqlite import JSON as SQLITE_JSON
+from sqlalchemy.orm import relationship
 
 from .database import Base
 from .schemas import BenchmarkProvider
@@ -73,3 +83,41 @@ class BenchmarkRun(Base):
         if metrics:
             self.metrics = metrics
         self.completed_at = datetime.utcnow()
+
+
+class NgcApiKeyProfile(Base):
+    """Stores reusable NGC API keys with friendly labels."""
+
+    __tablename__ = "ngc_api_key_profiles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(128), nullable=False)
+    usage = Column(String(128), nullable=True)
+    api_key = Column(String(512), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_used_at = Column(DateTime, nullable=True)
+
+    downloads = relationship(
+        "NgcModelDownload",
+        back_populates="profile",
+        cascade="all, delete-orphan",
+    )
+
+    @property
+    def masked_key(self) -> str:
+        suffix = self.api_key[-4:] if len(self.api_key) >= 4 else self.api_key
+        return f"***{suffix}"
+
+
+class NgcModelDownload(Base):
+    """Audit log linking profiles to the models they pulled."""
+
+    __tablename__ = "ngc_model_downloads"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    profile_id = Column(Integer, ForeignKey("ngc_api_key_profiles.id"), nullable=False)
+    model_name = Column(String(256), nullable=False)
+    tag = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    profile = relationship("NgcApiKeyProfile", back_populates="downloads")

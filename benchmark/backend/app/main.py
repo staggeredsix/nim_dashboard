@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .database import create_all
 from .model_registry import ModelRegistryService, ModelRuntimeService
+from .ngc_profiles import NgcProfileService
 from .schemas import (
     AutoBenchmarkRequest,
     BackendMetadata,
@@ -23,13 +24,20 @@ from .schemas import (
     ModelListResponse,
     ModelRuntimeListResponse,
     ModelRuntimeRequest,
+    NgcDownloadHistoryItem,
+    NgcProfileCreateRequest,
+    NgcProfileResponse,
     NimPullRequest,
     NimSearchRequest,
     OllamaPullRequest,
     PaginatedBenchmarkHistory,
+    BackendWorkflowDefinition,
+    WorkflowSimulationRequest,
+    WorkflowSimulationResponse,
 )
 from .service import BenchmarkService
 from .settings import settings
+from .workflows import WorkflowCatalog
 
 app = FastAPI(title=settings.api_title, version=settings.api_version)
 
@@ -42,8 +50,10 @@ app.add_middleware(
 )
 
 service = BenchmarkService()
-model_registry = ModelRegistryService(settings=settings)
+ngc_profiles = NgcProfileService()
+model_registry = ModelRegistryService(settings=settings, profile_service=ngc_profiles)
 runtime_service = ModelRuntimeService(settings=settings)
+workflow_catalog = WorkflowCatalog()
 
 
 def get_service() -> BenchmarkService:
@@ -219,3 +229,33 @@ async def search_huggingface_models(request: HuggingFaceSearchRequest) -> ModelL
 @app.post("/api/models/huggingface/download", response_model=ModelActionResponse)
 async def download_huggingface_model(request: HuggingFaceDownloadRequest) -> ModelActionResponse:
     return await model_registry.download_huggingface_model(request)
+
+
+@app.get("/api/ngc/profiles", response_model=List[NgcProfileResponse])
+async def list_ngc_profiles() -> List[NgcProfileResponse]:
+    return ngc_profiles.list_profiles()
+
+
+@app.post("/api/ngc/profiles", response_model=NgcProfileResponse)
+async def create_ngc_profile(request: NgcProfileCreateRequest) -> NgcProfileResponse:
+    return ngc_profiles.create_profile(request)
+
+
+@app.delete("/api/ngc/profiles/{profile_id}", response_model=ModelActionResponse)
+async def delete_ngc_profile(profile_id: int) -> ModelActionResponse:
+    return ngc_profiles.delete_profile(profile_id)
+
+
+@app.get("/api/ngc/profiles/{profile_id}/downloads", response_model=List[NgcDownloadHistoryItem])
+async def list_profile_downloads(profile_id: int) -> List[NgcDownloadHistoryItem]:
+    return ngc_profiles.list_downloads(profile_id)
+
+
+@app.get("/api/workflows", response_model=List[BackendWorkflowDefinition])
+async def list_workflows() -> List[BackendWorkflowDefinition]:
+    return workflow_catalog.list_workflows()
+
+
+@app.post("/api/workflows/simulate", response_model=WorkflowSimulationResponse)
+async def simulate_workflow(request: WorkflowSimulationRequest) -> WorkflowSimulationResponse:
+    return workflow_catalog.simulate(request)
