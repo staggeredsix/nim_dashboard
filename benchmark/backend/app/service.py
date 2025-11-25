@@ -105,20 +105,20 @@ class BenchmarkService:
                 .limit(limit)
             )
             runs = session.execute(statement).scalars().all()
-                return [
-                    BenchmarkHistoryItem(
-                        id=run.id,
-                        provider=run.provider,
-                        model_name=run.model_name,
-                        status=run.status,
-                        created_at=run.created_at.isoformat(),
-                        completed_at=run.completed_at.isoformat() if run.completed_at else None,
-                        metrics=run.metrics,
-                        error=run.error,
-                        parameters=run.parameters,
-                    )
-                    for run in runs
-                ]
+            return [
+                BenchmarkHistoryItem(
+                    id=run.id,
+                    provider=run.provider,
+                    model_name=run.model_name,
+                    status=run.status,
+                    created_at=run.created_at.isoformat(),
+                    completed_at=run.completed_at.isoformat() if run.completed_at else None,
+                    metrics=run.metrics,
+                    error=run.error,
+                    parameters=run.parameters,
+                )
+                for run in runs
+            ]
 
     async def count_runs(self) -> int:
         with get_session() as session:
