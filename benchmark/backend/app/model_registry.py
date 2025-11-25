@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 import httpx
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 
 try:  # Optional dependency used for Hugging Face downloads
     from huggingface_hub import HfApi, snapshot_download
@@ -200,6 +200,61 @@ class ModelRegistryService:
             metadata={"path": str(path)},
         )
 
+    async def upload_local_model(
+        self,
+        *,
+        provider: BenchmarkProvider,
+        directory_name: str,
+        file: UploadFile,
+        postprocess: Optional[List[str]] = None,
+    ) -> ModelActionResponse:
+        if provider not in {
+            BenchmarkProvider.LLAMACPP,
+            BenchmarkProvider.VLLM,
+        }:
+            raise HTTPException(
+                status_code=400,
+                detail="Raw model upload is only supported for llama.cpp and vLLM",
+            )
+
+        target_root = pathlib.Path(self.settings.model_cache_dir)
+        target_dir = target_root / directory_name
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        target_path = target_dir / file.filename
+        contents = await file.read()
+        target_path.write_bytes(contents)
+
+        applied_steps: List[str] = []
+        failed_steps: List[str] = []
+        for step in postprocess or []:
+            command = _postprocess_command(step, target_dir)
+            if not command:
+                failed_steps.append(step)
+                continue
+            try:
+                await _run_command(command)
+                applied_steps.append(step)
+            except HTTPException:
+                failed_steps.append(step)
+
+        detail = f"Uploaded {file.filename} to {target_dir}"
+        if applied_steps:
+            detail += f"; steps applied: {', '.join(applied_steps)}"
+        if failed_steps:
+            detail += f"; missing tooling for: {', '.join(failed_steps)}"
+
+        return ModelActionResponse(
+            status="completed",
+            detail=detail,
+            metadata={
+                "path": str(target_path),
+                "directory": str(target_dir),
+                "postprocess_completed": applied_steps,
+                "postprocess_failed": failed_steps,
+            },
+        )
+
 
 class ModelRuntimeService:
     """Tracks and manages runtime state for provider models."""
@@ -227,6 +282,8 @@ class ModelRuntimeService:
             model_name=request.model_name,
             base_url=base_url,
             started_at=datetime.utcnow().isoformat(),
+            kv_cache_mib=request.kv_cache_mib,
+            model_path=request.model_path,
         )
 
         async with self._lock:
@@ -277,6 +334,26 @@ async def _run_command(cmd: List[str], input_data: Optional[str] = None) -> str:
     if stderr:
         output = f"{output}\n{stderr.decode().strip()}".strip()
     return output
+
+
+def _postprocess_command(step: str, target_dir: pathlib.Path) -> List[str] | None:
+    """Return a best-effort command for optional post-processing steps."""
+
+    scripts_dir = pathlib.Path("./scripts")
+    step = step.lower()
+    if step == "llamacpp_quantize":
+        script = scripts_dir / "llamacpp_quantize.sh"
+        if script.exists():
+            return ["bash", str(script), str(target_dir)]
+    if step == "unsloth_optimize":
+        script = scripts_dir / "unsloth_optimize.sh"
+        if script.exists():
+            return ["bash", str(script), str(target_dir)]
+    if step == "trt_llm_convert":
+        script = scripts_dir / "trt_llm_convert.sh"
+        if script.exists():
+            return ["bash", str(script), str(target_dir)]
+    return None
 
 
 def _format_size(value: Optional[object]) -> Optional[str]:

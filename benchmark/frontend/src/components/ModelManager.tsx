@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Database, Download, Play, RefreshCw, ShieldCheck, Square, Zap } from 'lucide-react';
+import { Database, Download, Play, RefreshCw, ShieldCheck, Square, UploadCloud, Zap } from 'lucide-react';
 
 import type { BackendMetadata } from './BenchmarkForm';
-import { getJson, postJson } from '../lib/api';
+import { getJson, postFormData, postJson } from '../lib/api';
 
 interface ModelInfo {
   name: string;
@@ -29,6 +29,8 @@ interface ModelRuntimeInfo {
   model_name: string;
   base_url: string;
   started_at: string;
+  kv_cache_mib?: number | null;
+  model_path?: string | null;
 }
 
 interface ModelRuntimeListResponse {
@@ -86,6 +88,11 @@ export function ModelManager({ backends }: Props) {
   const [ollamaModel, setOllamaModel] = useState('llama3');
   const [ollamaModels, setOllamaModels] = useState<ModelInfo[]>([]);
   const [ollamaMessage, setOllamaMessage] = useState<string | null>(null);
+  const [uploadProvider, setUploadProvider] = useState<ProviderKey>('llamacpp');
+  const [uploadDirectory, setUploadDirectory] = useState('llama-model');
+  const [uploadPostprocess, setUploadPostprocess] = useState<string[]>([]);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setRuntimeInputs((prev) => ({
@@ -276,10 +283,36 @@ export function ModelManager({ backends }: Props) {
     },
   });
 
+  const uploadRawModel = useMutation<ModelActionResponse, Error, void>({
+    mutationFn: async () => {
+      if (!uploadFile) {
+        throw new Error('Select a model archive to upload.');
+      }
+      const form = new FormData();
+      form.append('provider', uploadProvider);
+      form.append('directory_name', uploadDirectory);
+      uploadPostprocess.forEach((step) => form.append('postprocess', step));
+      form.append('file', uploadFile);
+      return postFormData<ModelActionResponse>('/api/models/upload', form);
+    },
+    onSuccess: (data) => {
+      setUploadMessage(data.detail);
+    },
+    onError: (error) => {
+      setUploadMessage(error instanceof Error ? error.message : 'Upload failed');
+    },
+  });
+
   const isStarting = (provider: ProviderKey) =>
     startRuntime.isPending && startRuntime.variables?.provider === provider;
   const isStopping = (provider: ProviderKey) =>
     stopRuntime.isPending && stopRuntime.variables?.provider === provider;
+
+  const togglePostprocess = (step: string) => {
+    setUploadPostprocess((prev) =>
+      prev.includes(step) ? prev.filter((item) => item !== step) : [...prev, step]
+    );
+  };
 
   const handleStart = (provider: ProviderKey) => {
     const input = runtimeInputs[provider];
@@ -554,6 +587,75 @@ export function ModelManager({ backends }: Props) {
             </button>
             {hfMessage && <p className="text-xs text-amber-400">{hfMessage}</p>}
             <ModelList models={hfModels} emptyLabel="No models returned yet." />
+          </div>
+        </ProviderCard>
+
+        <ProviderCard
+          title="Upload raw model for llama.cpp and vLLM"
+          icon={<UploadCloud className="h-5 w-5 text-nvidia" />}
+          description="Place model artifacts on the server and optionally trigger helper scripts (quantize, Unsloth, TRT-LLM)."
+        >
+          <div className="space-y-3 text-sm">
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="flex flex-col gap-1 text-slate-300">
+                Provider
+                <select
+                  value={uploadProvider}
+                  onChange={(event) => setUploadProvider(event.target.value as ProviderKey)}
+                  className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                >
+                  <option value="llamacpp">llama.cpp</option>
+                  <option value="vllm">vLLM</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-slate-300">
+                Target directory name
+                <input
+                  value={uploadDirectory}
+                  onChange={(event) => setUploadDirectory(event.target.value)}
+                  className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                  placeholder="llama3"
+                />
+              </label>
+            </div>
+
+            <label className="flex flex-col gap-1 text-slate-300">
+              Model file (GGUF, safetensors, or archive)
+              <input
+                type="file"
+                onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
+                className="rounded-md border border-dashed border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+              />
+            </label>
+
+            <div className="grid gap-2 sm:grid-cols-3">
+              {[
+                { label: 'Quantize (llama.cpp)', value: 'llamacpp_quantize' },
+                { label: 'Unsloth optimize', value: 'unsloth_optimize' },
+                { label: 'TensorRT-LLM convert', value: 'trt_llm_convert' },
+              ].map((option) => (
+                <label key={option.value} className="flex items-center gap-2 text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={uploadPostprocess.includes(option.value)}
+                    onChange={() => togglePostprocess(option.value)}
+                    className="h-4 w-4 rounded border border-slate-700 bg-slate-950"
+                  />
+                  <span className="text-xs sm:text-sm">{option.label}</span>
+                </label>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => uploadRawModel.mutate()}
+              disabled={uploadRawModel.isPending}
+              className="inline-flex items-center gap-2 rounded-md bg-nvidia px-3 py-2 font-semibold text-slate-950"
+            >
+              <UploadCloud className="h-4 w-4" />
+              {uploadRawModel.isPending ? 'Uploading…' : 'Upload model'}
+            </button>
+            {uploadMessage && <p className="text-xs text-amber-400">{uploadMessage}</p>}
           </div>
         </ProviderCard>
       </div>

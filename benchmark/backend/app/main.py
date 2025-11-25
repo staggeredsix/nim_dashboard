@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import create_all
@@ -219,3 +219,18 @@ async def search_huggingface_models(request: HuggingFaceSearchRequest) -> ModelL
 @app.post("/api/models/huggingface/download", response_model=ModelActionResponse)
 async def download_huggingface_model(request: HuggingFaceDownloadRequest) -> ModelActionResponse:
     return await model_registry.download_huggingface_model(request)
+
+
+@app.post("/api/models/upload", response_model=ModelActionResponse)
+async def upload_model(
+    provider: BenchmarkProvider = Form(...),
+    directory_name: str = Form(...),
+    postprocess: List[str] | None = Form(default=None),
+    file: UploadFile = File(...),
+) -> ModelActionResponse:
+    return await model_registry.upload_local_model(
+        provider=provider,
+        directory_name=directory_name,
+        postprocess=postprocess,
+        file=file,
+    )
