@@ -93,6 +93,7 @@ class BenchmarkService:
                 completed_at=data["completed_at"],
                 metrics=data["metrics"],
                 error=data["error"],
+                parameters=data.get("parameters"),
             )
 
     async def list_runs(self, limit: int = 20, offset: int = 0) -> List[BenchmarkHistoryItem]:
@@ -114,6 +115,7 @@ class BenchmarkService:
                     completed_at=run.completed_at.isoformat() if run.completed_at else None,
                     metrics=run.metrics,
                     error=run.error,
+                    parameters=run.parameters,
                 )
                 for run in runs
             ]

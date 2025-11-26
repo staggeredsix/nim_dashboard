@@ -200,24 +200,40 @@ class BenchmarkExecutor:
 
 async def run_auto_benchmark(request: AutoBenchmarkRequest) -> List[BenchmarkResult]:
     results: List[BenchmarkResult] = []
+
+    concurrency_values = request.sweep_concurrency or list(
+        range(1, int(request.max_concurrent_users) + 1)
+    )
+    kv_cache_values: List[int | None] = (
+        request.sweep_kv_cache_mib
+        if request.sweep_kv_cache_mib
+        else [request.backend_parameters.kv_cache_mib]
+    )
+
     combos = build_parameter_grid(
         request.parameters,
-        concurrency_values=request.sweep_concurrency,
+        concurrency_values=concurrency_values,
         max_tokens_values=request.sweep_max_tokens,
         temperature_values=request.sweep_temperature,
     )
-    for params in combos:
-        bench_request = BenchmarkRequest(
-            provider=request.provider,
-            model_name=request.model_name,
-            prompt=request.prompt,
-            base_url=request.base_url,
-            parameters=params,
-            backend_parameters=request.backend_parameters,
+
+    for kv_cache in kv_cache_values:
+        backend_variant = model_copy(
+            request.backend_parameters,
+            update={"kv_cache_mib": kv_cache},
         )
-        executor = BenchmarkExecutor(bench_request)
-        result = await executor.run()
-        results.append(result)
+        for params in combos:
+            bench_request = BenchmarkRequest(
+                provider=request.provider,
+                model_name=request.model_name,
+                prompt=request.prompt,
+                base_url=request.base_url,
+                parameters=params,
+                backend_parameters=backend_variant,
+            )
+            executor = BenchmarkExecutor(bench_request)
+            result = await executor.run()
+            results.append(result)
     return results
 
 

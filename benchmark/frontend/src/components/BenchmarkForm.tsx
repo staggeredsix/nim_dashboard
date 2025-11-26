@@ -26,6 +26,8 @@ export interface BackendParameters {
   ollama_keep_alive?: string | null;
   vllm_best_of?: number | null;
   vllm_use_beam_search?: boolean | null;
+  kv_cache_mib?: number | null;
+  model_directory?: string | null;
 }
 
 export interface BenchmarkFormState {
@@ -35,6 +37,8 @@ export interface BenchmarkFormState {
   prompt: string;
   use_random_prompts: boolean;
   random_prompt_count: number;
+  auto_benchmark?: boolean;
+  max_concurrent_users?: number;
   parameters: BenchmarkParameters;
   backend_parameters: BackendParameters;
 }
@@ -55,6 +59,8 @@ export function BenchmarkForm({ backends, isSubmitting, onSubmit }: Props) {
     prompt: DEFAULT_PROMPT,
     use_random_prompts: false,
     random_prompt_count: 5,
+    auto_benchmark: false,
+    max_concurrent_users: 4,
     parameters: {
       request_count: 10,
       concurrency: 2,
@@ -149,43 +155,83 @@ export function BenchmarkForm({ backends, isSubmitting, onSubmit }: Props) {
           />
         </label>
 
-        <div className="md:col-span-2 rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-          <label className="flex items-center gap-2 text-sm font-semibold text-slate-200">
-            <input
-              type="checkbox"
-              checked={formState.use_random_prompts}
-              onChange={(event) =>
-                setFormState((prev) => ({
-                  ...prev,
-                  use_random_prompts: event.target.checked,
-                }))
-              }
-              className="h-4 w-4 rounded border border-slate-700 bg-slate-950"
-            />
-            Generate random prompts with the model
-          </label>
-          <p className="mt-2 text-xs text-slate-400">
-            We will ask the selected model to create additional prompts before benchmarking to reduce repeated
-            completions.
-          </p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <label className="flex flex-col gap-2 text-sm text-slate-300">
-              Random prompt count
+        <div className="md:col-span-2 rounded-lg border border-slate-800 bg-slate-950/60 p-4 space-y-4">
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm font-semibold text-slate-200">
               <input
-                type="number"
-                min={1}
-                max={100}
-                value={formState.random_prompt_count}
+                type="checkbox"
+                checked={Boolean(formState.auto_benchmark)}
                 onChange={(event) =>
                   setFormState((prev) => ({
                     ...prev,
-                    random_prompt_count: Number(event.target.value) || 1,
+                    auto_benchmark: event.target.checked,
                   }))
                 }
-                className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
-                disabled={!formState.use_random_prompts}
+                className="h-4 w-4 rounded border border-slate-700 bg-slate-950"
               />
+              Enable auto benchmark sweep
             </label>
+            <p className="text-xs text-slate-400">
+              Automatically run benchmarks starting at a single simulated user and sweeping up to the configured maximum.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-slate-300">
+                Maximum concurrent users
+                <input
+                  type="number"
+                  min={1}
+                  max={256}
+                  value={formState.max_concurrent_users ?? 1}
+                  onChange={(event) =>
+                    setFormState((prev) => ({
+                      ...prev,
+                      max_concurrent_users: Number(event.target.value) || 1,
+                    }))
+                  }
+                  className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+              <input
+                type="checkbox"
+                checked={formState.use_random_prompts}
+                onChange={(event) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    use_random_prompts: event.target.checked,
+                  }))
+                }
+                className="h-4 w-4 rounded border border-slate-700 bg-slate-950"
+              />
+              Generate random prompts with the model
+            </label>
+            <p className="text-xs text-slate-400">
+              We will ask the selected model to create additional prompts before benchmarking to reduce repeated
+              completions.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-slate-300">
+                Random prompt count
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={formState.random_prompt_count}
+                  onChange={(event) =>
+                    setFormState((prev) => ({
+                      ...prev,
+                      random_prompt_count: Number(event.target.value) || 1,
+                    }))
+                  }
+                  className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+                  disabled={!formState.use_random_prompts}
+                />
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -281,6 +327,25 @@ export function BenchmarkForm({ backends, isSubmitting, onSubmit }: Props) {
             </label>
           )}
 
+          <label className="flex flex-col gap-2 text-sm text-slate-300">
+            Model directory on server
+            <input
+              type="text"
+              value={formState.backend_parameters.model_directory ?? ''}
+              onChange={(event) =>
+                setFormState((prev) => ({
+                  ...prev,
+                  backend_parameters: {
+                    ...prev.backend_parameters,
+                    model_directory: event.target.value || undefined,
+                  },
+                }))
+              }
+              placeholder="/models/llama3"
+              className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+            />
+          </label>
+
           {formState.provider === 'ollama' && (
             <label className="flex flex-col gap-2 text-sm text-slate-300">
               Keep alive duration
@@ -340,6 +405,27 @@ export function BenchmarkForm({ backends, isSubmitting, onSubmit }: Props) {
                 Enable beam search
               </label>
             </div>
+          )}
+
+          {(formState.provider === 'vllm' || formState.provider === 'nim' || formState.provider === 'llamacpp') && (
+            <label className="flex flex-col gap-2 text-sm text-slate-300">
+              KV cache budget (MiB)
+              <input
+                type="number"
+                min={64}
+                value={formState.backend_parameters.kv_cache_mib ?? ''}
+                onChange={(event) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    backend_parameters: {
+                      ...prev.backend_parameters,
+                      kv_cache_mib: event.target.value ? Number(event.target.value) : undefined,
+                    },
+                  }))
+                }
+                className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+              />
+            </label>
           )}
         </div>
       </details>

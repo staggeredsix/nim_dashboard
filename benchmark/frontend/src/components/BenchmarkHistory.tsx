@@ -9,6 +9,7 @@ export type BenchmarkHistoryItem = {
   completed_at?: string | null;
   metrics?: Record<string, number> | null;
   error?: string | null;
+  parameters?: Record<string, unknown> | null;
 };
 
 interface Props {

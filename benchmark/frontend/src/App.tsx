@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, ServerCog } from 'lucide-react';
 
 import { BenchmarkForm, BenchmarkFormState, BackendMetadata } from './components/BenchmarkForm';
+import { BenchmarkGraph } from './components/BenchmarkGraph';
 import { BenchmarkHistory, BenchmarkHistoryItem } from './components/BenchmarkHistory';
 import { ModelManager } from './components/ModelManager';
 import { SummaryCards } from './components/SummaryCards';
@@ -24,7 +25,32 @@ export default function App() {
   });
 
   const scheduleBenchmark = useMutation({
-    mutationFn: (payload: BenchmarkFormState) => postJson('/api/benchmarks', payload),
+    mutationFn: (payload: BenchmarkFormState) => {
+      const { auto_benchmark: _auto, max_concurrent_users: _maxUsers, ...rest } = payload;
+      return postJson('/api/benchmarks', rest);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['benchmarks'] });
+    },
+  });
+
+  const autoBenchmark = useMutation({
+    mutationFn: (payload: BenchmarkFormState) => {
+      const { parameters, backend_parameters, max_concurrent_users, model_name, provider, prompt, base_url } = payload;
+      return postJson('/api/benchmarks/auto', {
+        provider,
+        model_name,
+        prompt,
+        base_url,
+        parameters,
+        backend_parameters,
+        sweep_concurrency: [],
+        sweep_max_tokens: [parameters.max_tokens],
+        sweep_temperature: [parameters.temperature],
+        sweep_kv_cache_mib: backend_parameters.kv_cache_mib ? [backend_parameters.kv_cache_mib] : [],
+        max_concurrent_users: max_concurrent_users ?? parameters.concurrency,
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['benchmarks'] });
     },
@@ -32,9 +58,13 @@ export default function App() {
 
   const handleSubmit = useCallback(
     (payload: BenchmarkFormState) => {
-      scheduleBenchmark.mutate(payload);
+      if (payload.auto_benchmark) {
+        autoBenchmark.mutate(payload);
+      } else {
+        scheduleBenchmark.mutate(payload);
+      }
     },
-    [scheduleBenchmark]
+    [autoBenchmark, scheduleBenchmark]
   );
 
   const latestRun = useMemo(() => {
@@ -73,12 +103,14 @@ export default function App() {
           lastTps={latestRun?.metrics?.tokens_per_second ?? undefined}
         />
 
+        <BenchmarkGraph runs={historyQuery.data?.runs ?? []} />
+
         <ModelManager backends={backendsQuery.data ?? []} />
 
         {backendsQuery.data && backendsQuery.data.length > 0 && (
           <BenchmarkForm
             backends={backendsQuery.data}
-            isSubmitting={scheduleBenchmark.isPending}
+            isSubmitting={scheduleBenchmark.isPending || autoBenchmark.isPending}
             onSubmit={handleSubmit}
           />
         )}

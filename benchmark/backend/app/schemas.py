@@ -42,6 +42,14 @@ class BackendSpecificParameters(BaseModel):
     ollama_keep_alive: Optional[str] = Field(default="5m")
     vllm_best_of: Optional[int] = Field(default=1)
     vllm_use_beam_search: Optional[bool] = Field(default=False)
+    kv_cache_mib: Optional[int] = Field(
+        default=None,
+        description="Provider-specific KV cache budget in MiB for vLLM, NIM, or llama.cpp.",
+    )
+    model_directory: Optional[str] = Field(
+        default=None,
+        description="Path on the server where the model artifacts live.",
+    )
 
 
 class BenchmarkRequest(BaseModel):
@@ -67,9 +75,18 @@ class AutoBenchmarkRequest(BaseModel):
     model_name: str
     prompt: str
     base_url: Optional[AnyHttpUrl] = None
-    sweep_concurrency: List[int] = Field(default_factory=lambda: [1, 2, 4])
+    sweep_concurrency: List[int] = Field(default_factory=list)
     sweep_max_tokens: List[int] = Field(default_factory=lambda: [256, 512])
     sweep_temperature: List[float] = Field(default_factory=lambda: [0.1, 0.5])
+    sweep_kv_cache_mib: List[int] = Field(
+        default_factory=list,
+        description="KV cache sweep values for providers that support it.",
+    )
+    max_concurrent_users: PositiveInt = Field(
+        default=4,
+        description="Upper bound for simulated concurrent users."
+        " Auto benchmark will sweep from 1 up to this value when explicit sweep_concurrency is empty.",
+    )
     parameters: BenchmarkParameters = Field(default_factory=BenchmarkParameters)
     backend_parameters: BackendSpecificParameters = Field(default_factory=BackendSpecificParameters)
 
@@ -96,6 +113,7 @@ class BenchmarkHistoryItem(BaseModel):
     completed_at: Optional[str]
     metrics: Optional[Dict[str, Any]]
     error: Optional[str]
+    parameters: Optional[Dict[str, Any]] = None
 
 
 class PaginatedBenchmarkHistory(BaseModel):
@@ -132,6 +150,8 @@ class ModelRuntimeRequest(BaseModel):
     provider: BenchmarkProvider
     model_name: str
     base_url: Optional[AnyHttpUrl] = None
+    kv_cache_mib: Optional[int] = None
+    model_path: Optional[str] = None
 
 
 class ModelRuntimeInfo(BaseModel):
@@ -139,6 +159,8 @@ class ModelRuntimeInfo(BaseModel):
     model_name: str
     base_url: AnyHttpUrl
     started_at: str
+    kv_cache_mib: Optional[int] = None
+    model_path: Optional[str] = None
 
 
 class ModelRuntimeListResponse(BaseModel):
