@@ -1,15 +1,18 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, ServerCog } from 'lucide-react';
 
 import { BenchmarkForm, BenchmarkFormState, BackendMetadata } from './components/BenchmarkForm';
 import { BenchmarkHistory, BenchmarkHistoryItem } from './components/BenchmarkHistory';
+import { AutoBenchmarkForm, AutoBenchmarkPayload } from './components/AutoBenchmarkForm';
+import { AutoBenchmarkResults } from './components/AutoBenchmarkResults';
 import { ModelManager } from './components/ModelManager';
 import { SummaryCards } from './components/SummaryCards';
 import { getJson, postJson } from './lib/api';
 
 export default function App() {
   const queryClient = useQueryClient();
+  const [autoRuns, setAutoRuns] = useState<BenchmarkHistoryItem[]>([]);
 
   const backendsQuery = useQuery<BackendMetadata[]>({
     queryKey: ['backends'],
@@ -30,6 +33,17 @@ export default function App() {
     },
   });
 
+  const autoBenchmark = useMutation({
+    mutationFn: (payload: AutoBenchmarkPayload) => postJson<BenchmarkHistoryItem[]>(
+      '/api/benchmarks/auto',
+      payload
+    ),
+    onSuccess: (runs) => {
+      setAutoRuns(runs);
+      queryClient.invalidateQueries({ queryKey: ['benchmarks'] });
+    },
+  });
+
   const handleSubmit = useCallback(
     (payload: BenchmarkFormState) => {
       scheduleBenchmark.mutate(payload);
@@ -43,6 +57,13 @@ export default function App() {
     }
     return historyQuery.data.runs.find((run) => run.status === 'completed') ?? historyQuery.data.runs[0];
   }, [historyQuery.data]);
+
+  const handleAutoSubmit = useCallback(
+    (payload: AutoBenchmarkPayload) => {
+      autoBenchmark.mutate(payload);
+    },
+    [autoBenchmark]
+  );
 
   if (backendsQuery.isLoading) {
     return (
@@ -74,6 +95,20 @@ export default function App() {
         />
 
         <ModelManager backends={backendsQuery.data ?? []} />
+
+        {backendsQuery.data && backendsQuery.data.length > 0 && (
+          <AutoBenchmarkForm
+            backends={backendsQuery.data}
+            isSubmitting={autoBenchmark.isPending}
+            onSubmit={handleAutoSubmit}
+          />
+        )}
+
+        <AutoBenchmarkResults
+          results={autoRuns}
+          isRunning={autoBenchmark.isPending}
+          onClear={() => setAutoRuns([])}
+        />
 
         {backendsQuery.data && backendsQuery.data.length > 0 && (
           <BenchmarkForm
