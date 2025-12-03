@@ -61,8 +61,9 @@ if ! "$DOWNLOADED_NGC" --version >/dev/null 2>&1; then
   exit 1
 fi
 
-rm -rf "$INSTALL_DIR"
-mv "$TMPDIR/ngc-cli" "$INSTALL_DIR"
+# Only replace the files we manage so user-specified directories (e.g. $HOME/bin)
+# are not wiped out.
+cp -a "$TMPDIR/ngc-cli/." "$INSTALL_DIR/"
 chmod u+x "$INSTALL_DIR/ngc"
 
 if [[ ! -f "$PROFILE_FILE" ]]; then
