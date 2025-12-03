@@ -15,7 +15,23 @@ cleanup() {
 }
 trap cleanup EXIT
 
-NGC_CLI_URL="${NGC_CLI_URL:-https://ngc.nvidia.com/downloads/ngccli_linux.zip}"
+if [[ -z "${NGC_CLI_URL:-}" ]]; then
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64)
+      NGC_CLI_URL="https://ngc.nvidia.com/downloads/ngccli_linux.zip"
+      ;;
+    aarch64|arm64)
+      NGC_CLI_URL="https://api.ngc.nvidia.com/v2/resources/nvidia/ngc-apps/ngc_cli/versions/4.9.17/files/ngccli_arm64.zip"
+      ;;
+    *)
+      echo "[install_ngc_cli] Unsupported architecture '$arch'. Set NGC_CLI_URL to a valid archive for your platform." >&2
+      exit 1
+      ;;
+  esac
+fi
+
+NGC_CLI_URL="${NGC_CLI_URL}"
 ARCHIVE_PATH="$TMPDIR/ngccli_linux.zip"
 
 echo "[install_ngc_cli] Downloading NGC CLI from $NGC_CLI_URL"
