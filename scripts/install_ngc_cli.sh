@@ -18,9 +18,22 @@ trap cleanup EXIT
 NGC_CLI_URL="${NGC_CLI_URL:-https://ngc.nvidia.com/downloads/ngccli_linux.zip}"
 ARCHIVE_PATH="$TMPDIR/ngccli_linux.zip"
 
+echo "[install_ngc_cli] Downloading NGC CLI from $NGC_CLI_URL"
 curl -fL "$NGC_CLI_URL" -o "$ARCHIVE_PATH"
 
 unzip -qo "$ARCHIVE_PATH" -d "$TMPDIR"
-install -m 0755 "$TMPDIR/ngc-cli/ngc" /usr/local/bin/ngc
+
+DOWNLOADED_NGC="$TMPDIR/ngc-cli/ngc"
+if [[ ! -x "$DOWNLOADED_NGC" ]]; then
+  echo "[install_ngc_cli] Downloaded archive did not contain an executable ngc binary." >&2
+  exit 1
+fi
+
+if ! "$DOWNLOADED_NGC" --version >/dev/null 2>&1; then
+  echo "[install_ngc_cli] Downloaded ngc binary failed to execute. Check your download URL or network access and try again." >&2
+  exit 1
+fi
+
+install -m 0755 "$DOWNLOADED_NGC" /usr/local/bin/ngc
 
 echo "[install_ngc_cli] Installed ngc to /usr/local/bin/ngc"
