@@ -56,6 +56,16 @@ async def startup() -> None:
     create_all()
 
 
+@app.get("/", include_in_schema=False)
+async def root() -> dict:
+    """Return a helpful landing payload instead of a 404 on the root path."""
+
+    return {
+        "status": "ok",
+        "message": "NIM Benchmark API running. Visit /docs for the API explorer or use the frontend dashboard.",
+    }
+
+
 @app.get("/health", summary="Service health probe")
 async def health_check() -> dict:
     return {"status": "ok", "version": settings.api_version}
