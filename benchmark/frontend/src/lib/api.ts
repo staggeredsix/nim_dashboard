@@ -10,7 +10,8 @@ function buildUrl(path: string): string {
     const base = API_BASE.startsWith('http')
       ? new URL(API_BASE)
       : new URL(API_BASE, window.location.origin);
-    return new URL(path, base).toString();
+    const resolvedPath = path.startsWith('/') ? `.${path}` : path;
+    return new URL(resolvedPath, base).toString();
   } catch (error) {
     console.error('Invalid API base URL configuration', error);
     return path;
