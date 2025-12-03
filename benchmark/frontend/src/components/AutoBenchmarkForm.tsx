@@ -5,6 +5,7 @@ import type {
   BackendMetadata,
   BackendParameters,
   BenchmarkParameters,
+  BenchmarkMetadata,
 } from './BenchmarkForm';
 
 export interface AutoBenchmarkPayload {
@@ -17,6 +18,7 @@ export interface AutoBenchmarkPayload {
   sweep_temperature: number[];
   parameters: BenchmarkParameters;
   backend_parameters: BackendParameters;
+  metadata: BenchmarkMetadata;
 }
 
 interface Props {
@@ -49,6 +51,10 @@ export function AutoBenchmarkForm({ backends, isSubmitting, onSubmit }: Props) {
       timeout: 120,
     } as BenchmarkParameters,
     backend_parameters: {} as BackendParameters,
+    metadata: {
+      quantization: 'none',
+      enable_trt_llm: false,
+    } as BenchmarkMetadata,
   });
 
   const providerMeta = useMemo(
@@ -69,6 +75,7 @@ export function AutoBenchmarkForm({ backends, isSubmitting, onSubmit }: Props) {
       sweep_temperature: parseNumberList(formState.sweep_temperature),
       parameters: formState.parameters,
       backend_parameters: formState.backend_parameters,
+      metadata: formState.metadata,
     };
 
     onSubmit(payload);
@@ -152,6 +159,78 @@ export function AutoBenchmarkForm({ backends, isSubmitting, onSubmit }: Props) {
           helper="Comma-separated values (e.g. 0.1,0.3,0.5)"
         />
       </div>
+
+      <section className="mt-6 rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+        <header className="flex flex-col gap-1">
+          <span className="text-sm font-semibold text-slate-200">Runtime profile</span>
+          <p className="text-xs text-slate-400">
+            Match benchmark sweeps to precision preferences or force TensorRT-LLM for NVFP4 paths.
+          </p>
+        </header>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="flex flex-wrap gap-2">
+            {(() => {
+              const quantization = formState.metadata.quantization ?? 'none';
+              return (
+                [
+                  { label: 'Default precision', value: 'none' },
+                  { label: 'NVFP4 (TensorRT-LLM)', value: 'nvfp4' },
+                  { label: 'FP8', value: 'fp8' },
+                  { label: 'INT8', value: 'int8' },
+                ] as const
+              ).map((option) => {
+                const isActive = quantization === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        metadata: {
+                          ...prev.metadata,
+                          quantization: option.value,
+                          enable_trt_llm:
+                            option.value === 'nvfp4' ? true : Boolean(prev.metadata.enable_trt_llm),
+                        },
+                      }))
+                    }
+                    className={`rounded-md border px-3 py-2 text-sm transition ${
+                      isActive
+                        ? 'border-lime-400 bg-lime-400/10 text-lime-200'
+                        : 'border-slate-800 bg-slate-950 text-slate-200 hover:border-slate-700'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              });
+            })()}
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={Boolean(formState.metadata.enable_trt_llm)}
+              onChange={(event) =>
+                setFormState((prev) => ({
+                  ...prev,
+                  metadata: {
+                    ...prev.metadata,
+                    enable_trt_llm: event.target.checked,
+                    quantization:
+                      event.target.checked && prev.metadata.quantization === 'none'
+                        ? 'nvfp4'
+                        : prev.metadata.quantization,
+                  },
+                }))
+              }
+              className="h-4 w-4 rounded border border-slate-700 bg-slate-950"
+            />
+            Enable TensorRT-LLM pipeline (NVFP4 when available)
+          </label>
+        </div>
+      </section>
 
       <section className="mt-6 grid gap-4 md:grid-cols-3">
         <NumberField

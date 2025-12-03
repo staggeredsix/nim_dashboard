@@ -72,6 +72,7 @@ class AutoBenchmarkRequest(BaseModel):
     sweep_temperature: List[float] = Field(default_factory=lambda: [0.1, 0.5])
     parameters: BenchmarkParameters = Field(default_factory=BenchmarkParameters)
     backend_parameters: BackendSpecificParameters = Field(default_factory=BackendSpecificParameters)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class BenchmarkRunResponse(BaseModel):

@@ -214,6 +214,7 @@ async def run_auto_benchmark(request: AutoBenchmarkRequest) -> List[BenchmarkRes
             base_url=request.base_url,
             parameters=params,
             backend_parameters=request.backend_parameters,
+            metadata=request.metadata,
         )
         executor = BenchmarkExecutor(bench_request)
         result = await executor.run()
