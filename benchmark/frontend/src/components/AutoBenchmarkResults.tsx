@@ -77,12 +77,16 @@ export function AutoBenchmarkResults({ results, isRunning, onClear }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {results.map((run) => (
-                  <tr key={run.id} className="border-b border-slate-800">
+                {results.map((run, index) => {
+                  const displayId = run.id !== 0 ? run.id : index + 1;
+                  const rowKey = `${run.model_name}-${displayId}-${index}`;
+
+                  return (
+                    <tr key={rowKey} className="border-b border-slate-800">
                     <td className="px-3 py-2 text-slate-200">
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className={`h-4 w-4 ${run.status === 'completed' ? 'text-emerald-400' : 'text-slate-500'}`} />
-                        <span>#{run.id}</span>
+                        <span>#{displayId}</span>
                       </div>
                       <p className="text-xs text-slate-400">{run.model_name}</p>
                     </td>
@@ -102,8 +106,9 @@ export function AutoBenchmarkResults({ results, isRunning, onClear }: Props) {
                     <td className="px-3 py-2 text-slate-200">
                       {run.metrics?.latency_p95_ms ? `${run.metrics.latency_p95_ms.toFixed(1)} ms` : '—'}
                     </td>
-                  </tr>
-                ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
