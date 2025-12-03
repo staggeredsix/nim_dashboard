@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import List
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from .database import create_all
 from .model_registry import ModelRegistryService, ModelRuntimeService
@@ -34,6 +37,16 @@ from .settings import settings
 
 app = FastAPI(title=settings.api_title, version=settings.api_version)
 
+frontend_dist_path = Path(settings.frontend_dist_path) if settings.frontend_dist_path else None
+frontend_index_path = (
+    frontend_dist_path / "index.html" if frontend_dist_path and frontend_dist_path.exists() else None
+)
+
+if frontend_dist_path and frontend_dist_path.exists():
+    assets_dir = frontend_dist_path / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allow_origins,
@@ -57,8 +70,14 @@ async def startup() -> None:
 
 
 @app.get("/", include_in_schema=False)
-async def root() -> dict:
-    """Return a helpful landing payload instead of a 404 on the root path."""
+async def root() -> FileResponse | RedirectResponse | dict:
+    """Serve the dashboard when available, otherwise redirect or return JSON."""
+
+    if frontend_index_path and frontend_index_path.exists():
+        return FileResponse(frontend_index_path)
+
+    if settings.frontend_base_url:
+        return RedirectResponse(settings.frontend_base_url)
 
     return {
         "status": "ok",

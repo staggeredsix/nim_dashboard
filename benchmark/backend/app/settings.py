@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from functools import lru_cache
+from pathlib import Path
 from typing import List, Optional
 
 
@@ -55,11 +56,29 @@ def _split_origins(value: str | None) -> List[str]:
     return [origin.strip() for origin in value.split(",") if origin.strip()]
 
 
+def _default_frontend_base_url() -> str:
+    """Return the default dashboard location for browser redirects."""
+
+    # The frontend is exposed on port 5173 in docker-compose and local dev.
+    return "http://localhost:5173"
+
+
+def _default_frontend_dist_path() -> str | None:
+    """Return the built frontend path when it exists locally."""
+
+    candidate = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    if candidate.exists():
+        return str(candidate)
+    return None
+
+
 @dataclass(slots=True)
 class Settings:
     api_title: str = field(default="NIM Benchmark API")
     api_version: str = field(default="1.0.0")
     allow_origins: List[str] = field(default_factory=lambda: ["*"])
+    frontend_base_url: str = field(default_factory=_default_frontend_base_url)
+    frontend_dist_path: Optional[str] = field(default_factory=_default_frontend_dist_path)
 
     database_url: str = field(default="sqlite:///./data/benchmarks.db")
 
@@ -84,6 +103,8 @@ class Settings:
             api_title=os.getenv("API_TITLE", "NIM Benchmark API"),
             api_version=os.getenv("API_VERSION", "1.0.0"),
             allow_origins=_split_origins(os.getenv("ALLOW_ORIGINS")),
+            frontend_base_url=os.getenv("FRONTEND_BASE_URL", _default_frontend_base_url()),
+            frontend_dist_path=os.getenv("FRONTEND_DIST_PATH", _default_frontend_dist_path()),
             database_url=os.getenv("DATABASE_URL", "sqlite:///./data/benchmarks.db"),
             default_timeout=float(os.getenv("DEFAULT_TIMEOUT", "120")),
             request_concurrency=int(os.getenv("REQUEST_CONCURRENCY", "4")),
