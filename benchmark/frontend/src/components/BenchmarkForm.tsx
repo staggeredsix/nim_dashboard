@@ -28,6 +28,11 @@ export interface BackendParameters {
   vllm_use_beam_search?: boolean | null;
 }
 
+export interface BenchmarkMetadata {
+  quantization?: 'none' | 'nvfp4' | 'fp8' | 'int8';
+  enable_trt_llm?: boolean;
+}
+
 export interface BenchmarkFormState {
   provider: string;
   model_name: string;
@@ -37,6 +42,7 @@ export interface BenchmarkFormState {
   random_prompt_count: number;
   parameters: BenchmarkParameters;
   backend_parameters: BackendParameters;
+  metadata: BenchmarkMetadata;
 }
 
 interface Props {
@@ -67,6 +73,10 @@ export function BenchmarkForm({ backends, isSubmitting, onSubmit }: Props) {
       timeout: 120,
     },
     backend_parameters: {},
+    metadata: {
+      quantization: 'none',
+      enable_trt_llm: false,
+    },
   }));
 
   const providerMeta = useMemo(
@@ -189,6 +199,104 @@ export function BenchmarkForm({ backends, isSubmitting, onSubmit }: Props) {
           </div>
         </div>
       </div>
+
+      <section className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+        <header className="flex flex-col gap-1">
+          <span className="text-sm font-semibold text-slate-200">Runtime profile</span>
+          <p className="text-xs text-slate-400">
+            Quickly align precision and pipeline choices. Select NVFP4 for automatic TensorRT-LLM enablement.
+          </p>
+        </header>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="flex flex-wrap gap-2">
+            {(() => {
+              const quantization = formState.metadata.quantization ?? 'none';
+              return (
+                [
+                  { label: 'Default precision', value: 'none' },
+                  { label: 'NVFP4 (TensorRT-LLM)', value: 'nvfp4' },
+                  { label: 'FP8', value: 'fp8' },
+                  { label: 'INT8', value: 'int8' },
+                ] as const
+              ).map((option) => {
+                const isActive = quantization === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        metadata: {
+                          ...prev.metadata,
+                          quantization: option.value,
+                          enable_trt_llm:
+                            option.value === 'nvfp4' ? true : Boolean(prev.metadata.enable_trt_llm),
+                        },
+                      }))
+                    }
+                    className={`rounded-md border px-3 py-2 text-sm transition ${
+                      isActive
+                        ? 'border-lime-400 bg-lime-400/10 text-lime-200'
+                        : 'border-slate-800 bg-slate-950 text-slate-200 hover:border-slate-700'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              });
+            })()}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={Boolean(formState.metadata.enable_trt_llm)}
+                onChange={(event) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    metadata: {
+                      ...prev.metadata,
+                      enable_trt_llm: event.target.checked,
+                      quantization:
+                        event.target.checked && prev.metadata.quantization === 'none'
+                          ? 'nvfp4'
+                          : prev.metadata.quantization,
+                    },
+                  }))
+                }
+                className="h-4 w-4 rounded border border-slate-700 bg-slate-950"
+              />
+              Enable TensorRT-LLM pipeline (auto NVFP4 when needed)
+            </label>
+            <div className="flex flex-wrap gap-2 text-xs text-slate-400">
+              <QuickPresetButton
+                label="Smoke test"
+                description="5 req, 1 concurrency"
+                onClick={() =>
+                  applyPreset({ request_count: 5, concurrency: 1, warmup_requests: 0, max_tokens: 128 })
+                }
+              />
+              <QuickPresetButton
+                label="Latency focus"
+                description="10 req, 2 concurrency"
+                onClick={() =>
+                  applyPreset({ request_count: 10, concurrency: 2, warmup_requests: 1, max_tokens: 256 })
+                }
+              />
+              <QuickPresetButton
+                label="Throughput soak"
+                description="50 req, 8 concurrency"
+                onClick={() =>
+                  applyPreset({ request_count: 50, concurrency: 8, warmup_requests: 4, max_tokens: 512 })
+                }
+              />
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="grid gap-4 md:grid-cols-3">
         <NumberField
@@ -364,6 +472,16 @@ export function BenchmarkForm({ backends, isSubmitting, onSubmit }: Props) {
       },
     }));
   }
+
+  function applyPreset(overrides: Partial<BenchmarkParameters>) {
+    setFormState((prev) => ({
+      ...prev,
+      parameters: {
+        ...prev.parameters,
+        ...overrides,
+      },
+    }));
+  }
 }
 
 interface NumberFieldProps
@@ -393,6 +511,25 @@ function NumberField({ label, value, onChange, min, max, step }: NumberFieldProp
         className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
       />
     </label>
+  );
+}
+
+interface QuickPresetButtonProps {
+  label: string;
+  description: string;
+  onClick: () => void;
+}
+
+function QuickPresetButton({ label, description, onClick }: QuickPresetButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded border border-slate-800 bg-slate-950 px-3 py-2 text-left text-slate-200 transition hover:border-lime-400 hover:text-lime-200"
+    >
+      <p className="text-xs font-semibold">{label}</p>
+      <p className="text-[11px] text-slate-400">{description}</p>
+    </button>
   );
 }
 

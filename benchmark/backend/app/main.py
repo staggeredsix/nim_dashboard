@@ -1,6 +1,8 @@
 """FastAPI application exposing benchmarking functionality."""
 from __future__ import annotations
 
+import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import List
@@ -35,6 +37,8 @@ from .schemas import (
 from .service import BenchmarkService
 from .settings import settings
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title=settings.api_title, version=settings.api_version)
 
 frontend_dist_path = Path(settings.frontend_dist_path) if settings.frontend_dist_path else None
@@ -68,8 +72,21 @@ def get_service() -> BenchmarkService:
 async def startup() -> None:
     create_all()
 
+    host = os.getenv("UVICORN_HOST", "0.0.0.0")
+    port = os.getenv("UVICORN_PORT", "8000")
+    display_host = "localhost" if host in {"0.0.0.0", "::"} else host
+    base_url = f"http://{display_host}:{port}"
+    logger.info(
+        "NIM Benchmark API listening on %s (docs at %s/docs, schema at %s/openapi.json)",
+        base_url,
+        base_url,
+        base_url,
+    )
+    if settings.frontend_base_url:
+        logger.info("Frontend dashboard available at %s", settings.frontend_base_url)
 
-@app.get("/", include_in_schema=False)
+
+@app.get("/", include_in_schema=False, response_model=None)
 async def root() -> FileResponse | RedirectResponse | dict:
     """Serve the dashboard when available, otherwise redirect or return JSON."""
 
