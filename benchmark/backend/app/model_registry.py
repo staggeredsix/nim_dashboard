@@ -207,8 +207,21 @@ class ModelRegistryService:
     async def setup_ngc_cli_model(self, request: NgcCliModelRequest) -> ModelActionResponse:
         """Download and prepare a model using the NGC CLI for local backends."""
 
-        if shutil.which("ngc") is None:
+        ngc_path = shutil.which("ngc")
+        if ngc_path is None:
             raise HTTPException(status_code=500, detail="NGC CLI must be installed on the backend host")
+
+        try:
+            await _run_command([ngc_path, "--version"])
+        except HTTPException as exc:  # pragma: no cover - exercised by explicit test
+            detail = exc.detail
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"NGC CLI at {ngc_path} could not be executed ({detail}). "
+                    "Reinstall it with ./scripts/install_ngc_cli.sh to continue."
+                ),
+            ) from exc
 
         if not request.api_key:
             raise HTTPException(status_code=400, detail="NGC API key is required for NGC CLI downloads")
