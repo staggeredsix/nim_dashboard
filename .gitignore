@@ -1,0 +1,11 @@
+# Dependencies and build outputs
+benchmark/frontend/node_modules/
+benchmark/frontend/dist/
+benchmark/backend/.venv/
+__pycache__/
+*.pyc
+
+# Environment and IDE
+.env
+.vscode/
+.idea/
