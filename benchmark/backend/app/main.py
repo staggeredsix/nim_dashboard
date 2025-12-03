@@ -23,6 +23,7 @@ from .schemas import (
     ModelListResponse,
     ModelRuntimeListResponse,
     ModelRuntimeRequest,
+    NgcCliModelRequest,
     NimPullRequest,
     NimSearchRequest,
     OllamaPullRequest,
@@ -182,6 +183,11 @@ async def list_ollama_models(base_url: str | None = None) -> ModelListResponse:
 @app.post("/api/models/ollama/pull", response_model=ModelActionResponse)
 async def pull_ollama_model(request: OllamaPullRequest) -> ModelActionResponse:
     return await model_registry.pull_ollama_model(request)
+
+
+@app.post("/api/models/ngc/cli", response_model=ModelActionResponse)
+async def setup_ngc_cli_model(request: NgcCliModelRequest) -> ModelActionResponse:
+    return await model_registry.setup_ngc_cli_model(request)
 
 
 @app.get("/api/models/runtimes", response_model=ModelRuntimeListResponse)
