@@ -224,7 +224,15 @@ class ModelRegistryService:
                 detail="Select at least one backend other than NIM for NGC CLI models",
             )
 
-        target_dir = pathlib.Path(self.settings.model_cache_dir) / request.model_name
+        model_name = request.model_name
+        model_path = pathlib.PurePath(model_name)
+        if model_path.is_absolute() or ".." in model_path.parts or model_path.name != model_name:
+            raise HTTPException(
+                status_code=400,
+                detail="Model name cannot contain path separators or traversal sequences",
+            )
+
+        target_dir = pathlib.Path(self.settings.model_cache_dir) / model_name
         target_dir.mkdir(parents=True, exist_ok=True)
 
         cmd = shlex.split(request.pull_command)
