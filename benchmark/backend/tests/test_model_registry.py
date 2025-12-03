@@ -9,6 +9,7 @@ from app.model_registry import ModelRegistryService
 from app.schemas import (
     HuggingFaceDownloadRequest,
     HuggingFaceSearchRequest,
+    NgcCliModelRequest,
     NimPullRequest,
     NimSearchRequest,
     OllamaPullRequest,
@@ -148,3 +149,29 @@ async def test_search_huggingface_models(monkeypatch: pytest.MonkeyPatch) -> Non
     models = await service.search_huggingface_models(HuggingFaceSearchRequest(api_key="token"))
     assert len(models) == 1
     assert models[0].name == "org/model"
+
+
+@pytest.mark.asyncio
+async def test_setup_ngc_cli_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    settings = Settings(model_cache_dir=str(tmp_path))
+    service = ModelRegistryService(settings)
+
+    async def _fake_run_command(*args: Any, **kwargs: Any) -> str:
+        return "downloaded"
+
+    monkeypatch.setattr("app.model_registry.shutil.which", lambda _: "/usr/bin/ngc")
+    monkeypatch.setattr("app.model_registry._run_command", _fake_run_command)
+
+    response = await service.setup_ngc_cli_model(
+        NgcCliModelRequest(
+            api_key="token",
+            pull_command="ngc registry model download org/model",
+            model_name="demo-model",
+            enable_trt_llm=True,
+            backends=["llamacpp", "ollama", "vllm"],
+        )
+    )
+
+    assert response.status == "completed"
+    assert response.metadata["nvfp4_available"] is True
+    assert (tmp_path / "demo-model" / "llamacpp_config.json").exists()

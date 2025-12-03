@@ -24,6 +24,14 @@ interface ModelActionResponse {
   metadata?: Record<string, unknown> | null;
 }
 
+interface NgcCliMetadata {
+  model_dir?: string;
+  backends?: string[];
+  trt_llm_enabled?: boolean;
+  nvfp4_available?: boolean;
+  quantization?: string;
+}
+
 interface ModelRuntimeInfo {
   provider: string;
   model_name: string;
@@ -87,6 +95,19 @@ export function ModelManager({ backends }: Props) {
   const [ollamaModels, setOllamaModels] = useState<ModelInfo[]>([]);
   const [ollamaMessage, setOllamaMessage] = useState<string | null>(null);
 
+  const [ngcCliKey, setNgcCliKey] = useState('');
+  const [ngcCliCommand, setNgcCliCommand] = useState('ngc registry model download ');
+  const [ngcCliModelName, setNgcCliModelName] = useState('ngc-model');
+  const [ngcCliBackends, setNgcCliBackends] = useState<Record<string, boolean>>({
+    llamacpp: true,
+    ollama: true,
+    sglang: true,
+    vllm: true,
+  });
+  const [ngcTrtPipeline, setNgcTrtPipeline] = useState(true);
+  const [ngcCliMessage, setNgcCliMessage] = useState<string | null>(null);
+  const [ngcCliMetadata, setNgcCliMetadata] = useState<NgcCliMetadata | null>(null);
+
   useEffect(() => {
     setRuntimeInputs((prev) => ({
       ollama: { ...prev.ollama, baseUrl: defaultOllamaUrl },
@@ -127,6 +148,39 @@ export function ModelManager({ backends }: Props) {
     },
     onError: (error) => {
       setOllamaMessage(error instanceof Error ? error.message : 'Failed to pull model');
+    },
+  });
+
+  const toggleNgcBackend = (backend: string) => {
+    setNgcCliBackends((prev) => ({ ...prev, [backend]: !prev[backend] }));
+  };
+
+  const prepareNgcCliModel = useMutation({
+    mutationFn: async () => {
+      const backends = Object.entries(ngcCliBackends)
+        .filter(([, enabled]) => enabled)
+        .map(([name]) => name);
+
+      return postJson<ModelActionResponse>('/api/models/ngc/cli', {
+        api_key: ngcCliKey,
+        pull_command: ngcCliCommand,
+        model_name: ngcCliModelName,
+        enable_trt_llm: ngcTrtPipeline,
+        backends,
+      });
+    },
+    onSuccess: (data) => {
+      setNgcCliMessage(data.detail);
+      const metadata = (data.metadata ?? {}) as NgcCliMetadata;
+      setNgcCliMetadata(metadata);
+      if (typeof metadata.trt_llm_enabled === 'boolean') {
+        setNgcTrtPipeline(metadata.trt_llm_enabled);
+      }
+    },
+    onError: (error) => {
+      setNgcCliMessage(
+        error instanceof Error ? error.message : 'Failed to configure model with NGC CLI'
+      );
     },
   });
 
@@ -250,6 +304,11 @@ export function ModelManager({ backends }: Props) {
   const getRunningModels = (provider: ProviderKey) =>
     runtimeData.filter((runtime) => runtime.provider === provider);
 
+  const nvfp4Available = Boolean(ngcCliMetadata?.nvfp4_available);
+  const selectedNgcBackends = Object.entries(ngcCliBackends)
+    .filter(([, enabled]) => enabled)
+    .map(([name]) => name);
+
   const startRuntime = useMutation<ModelActionResponse, Error, ModelRuntimePayload>({
     mutationFn: (payload) => postJson<ModelActionResponse>('/api/models/runtimes/start', payload),
     onSuccess: (data, variables) => {
@@ -357,6 +416,96 @@ export function ModelManager({ backends }: Props) {
       </div>
 
       <div className="mx-auto w-full max-w-6xl space-y-6">
+        <ProviderCard
+          title="NGC CLI model setup"
+          icon={<Download className="h-5 w-5 text-nvidia" />}
+          description="Use the NGC CLI to pull models and configure llama.cpp, Ollama, sglang, and vLLM."
+        >
+          <div className="space-y-3 text-sm">
+            <label className="flex flex-col gap-1 text-slate-300">
+              NGC API key
+              <input
+                type="password"
+                value={ngcCliKey}
+                onChange={(event) => setNgcCliKey(event.target.value)}
+                className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                placeholder="NGC API token"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-slate-300">
+              NGC CLI pull command
+              <input
+                value={ngcCliCommand}
+                onChange={(event) => setNgcCliCommand(event.target.value)}
+                className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                placeholder="ngc registry model download org/model"
+              />
+            </label>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="flex flex-col gap-1 text-slate-300">
+                Model directory name
+                <input
+                  value={ngcCliModelName}
+                  onChange={(event) => setNgcCliModelName(event.target.value)}
+                  className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-slate-100"
+                  placeholder="ngc-model"
+                />
+              </label>
+              <div className="space-y-2 rounded-md border border-slate-800 bg-slate-950/60 p-3 text-slate-200">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Target backends</p>
+                {["llamacpp", "ollama", "sglang", "vllm"].map((backend) => (
+                  <label key={backend} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={ngcCliBackends[backend]}
+                      onChange={() => toggleNgcBackend(backend)}
+                      className="h-4 w-4 rounded border-slate-700 bg-slate-900"
+                    />
+                    <span className="capitalize">{backend}</span>
+                  </label>
+                ))}
+                <p className="text-[11px] text-slate-500">NIM is skipped for NGC CLI models.</p>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-slate-200">
+              <input
+                type="checkbox"
+                checked={ngcTrtPipeline}
+                onChange={(event) => setNgcTrtPipeline(event.target.checked)}
+                className="h-4 w-4 rounded border-slate-700 bg-slate-900"
+              />
+              <span className="text-sm">Enable TensorRT-LLM pipeline (auto NVFP4 quantization if missing)</span>
+            </label>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+              <span
+                className={`rounded-full px-2 py-1 text-[11px] ${nvfp4Available ? 'bg-emerald-900 text-emerald-200' : 'bg-slate-800 text-slate-300'}`}
+              >
+                NVFP4 Available: {nvfp4Available ? 'Yes' : 'No'}
+              </span>
+              {ngcCliMetadata?.backends && (
+                <span>Configured: {ngcCliMetadata.backends.join(', ')}</span>
+              )}
+              {ngcCliMetadata?.model_dir && <span>Saved to {ngcCliMetadata.model_dir}</span>}
+            </div>
+            <button
+              type="button"
+              onClick={() => prepareNgcCliModel.mutate()}
+              disabled={
+                prepareNgcCliModel.isPending ||
+                !ngcCliKey.trim() ||
+                !ngcCliCommand.trim() ||
+                !ngcCliModelName.trim() ||
+                selectedNgcBackends.length === 0
+              }
+              className="inline-flex items-center gap-2 rounded-md bg-nvidia px-3 py-2 font-semibold text-slate-950 disabled:opacity-60"
+            >
+              <Download className="h-4 w-4" />
+              {prepareNgcCliModel.isPending ? 'Configuring…' : 'Prepare model'}
+            </button>
+            {ngcCliMessage && <p className="text-xs text-amber-400">{ngcCliMessage}</p>}
+          </div>
+        </ProviderCard>
+
         <ProviderCard
           title="NVIDIA NIM catalog"
           icon={<ShieldCheck className="h-5 w-5 text-nvidia" />}

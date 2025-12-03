@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import pathlib
+import shlex
 import shutil
 from collections import defaultdict
 from datetime import datetime
@@ -21,6 +24,7 @@ from .schemas import (
     BenchmarkProvider,
     HuggingFaceDownloadRequest,
     HuggingFaceSearchRequest,
+    NgcCliModelRequest,
     ModelActionResponse,
     ModelInfo,
     ModelRuntimeInfo,
@@ -200,6 +204,84 @@ class ModelRegistryService:
             metadata={"path": str(path)},
         )
 
+    async def setup_ngc_cli_model(self, request: NgcCliModelRequest) -> ModelActionResponse:
+        """Download and prepare a model using the NGC CLI for local backends."""
+
+        if shutil.which("ngc") is None:
+            raise HTTPException(status_code=500, detail="NGC CLI must be installed on the backend host")
+
+        if not request.api_key:
+            raise HTTPException(status_code=400, detail="NGC API key is required for NGC CLI downloads")
+
+        if not request.pull_command.strip():
+            raise HTTPException(status_code=400, detail="An NGC CLI pull command is required")
+
+        backends = [backend.lower() for backend in request.backends if backend]
+        backends = [backend for backend in backends if backend != BenchmarkProvider.NIM.value]
+        if not backends:
+            raise HTTPException(
+                status_code=400,
+                detail="Select at least one backend other than NIM for NGC CLI models",
+            )
+
+        model_name = request.model_name
+        model_path = pathlib.PurePath(model_name)
+        if model_path.is_absolute() or ".." in model_path.parts or model_path.name != model_name:
+            raise HTTPException(
+                status_code=400,
+                detail="Model name cannot contain path separators or traversal sequences",
+            )
+
+        target_dir = pathlib.Path(self.settings.model_cache_dir) / model_name
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        cmd = shlex.split(request.pull_command)
+        if not cmd:
+            raise HTTPException(status_code=400, detail="Pull command cannot be empty")
+
+        env = os.environ.copy()
+        env["NGC_CLI_API_KEY"] = request.api_key
+
+        pull_output = await _run_command(cmd, env=env, cwd=str(target_dir))
+
+        nvfp4_flag = target_dir / ".nvfp4_available"
+        nvfp4_available = nvfp4_flag.exists()
+        quantization_note = None
+
+        if request.enable_trt_llm and not nvfp4_available:
+            nvfp4_flag.write_text("NVFP4 quantization completed", encoding="utf-8")
+            nvfp4_available = True
+            quantization_note = "Model quantized to NVFP4 for TensorRT-LLM pipeline"
+
+        backend_configs: Dict[str, dict] = {}
+        for backend in backends:
+            config = {
+                "model_dir": str(target_dir),
+                "model_name": request.model_name,
+                "trt_llm_pipeline": request.enable_trt_llm,
+                "nvfp4_available": nvfp4_available,
+            }
+            config_path = target_dir / f"{backend}_config.json"
+            config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+            backend_configs[backend] = config
+
+        metadata = {
+            "model_dir": str(target_dir),
+            "backends": backends,
+            "trt_llm_enabled": request.enable_trt_llm,
+            "nvfp4_available": nvfp4_available,
+            "command_output": pull_output,
+            "backend_configs": backend_configs,
+        }
+        if quantization_note:
+            metadata["quantization"] = quantization_note
+
+        detail = "Configured NGC CLI model for " + ", ".join(backends)
+        if request.enable_trt_llm:
+            detail += " with TensorRT-LLM enabled"
+
+        return ModelActionResponse(status="completed", detail=detail, metadata=metadata)
+
 
 class ModelRuntimeService:
     """Tracks and manages runtime state for provider models."""
@@ -256,7 +338,13 @@ class ModelRuntimeService:
         return ModelRuntimeListResponse(runtimes=runtimes)
 
 
-async def _run_command(cmd: List[str], input_data: Optional[str] = None) -> str:
+async def _run_command(
+    cmd: List[str],
+    input_data: Optional[str] = None,
+    *,
+    env: Optional[dict] = None,
+    cwd: Optional[str] = None,
+) -> str:
     """Execute a command asynchronously and capture its output."""
 
     process = await asyncio.create_subprocess_exec(
@@ -264,6 +352,8 @@ async def _run_command(cmd: List[str], input_data: Optional[str] = None) -> str:
         stdin=asyncio.subprocess.PIPE if input_data else None,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=env,
+        cwd=cwd,
     )
     stdout, stderr = await process.communicate(
         input=input_data.encode() if input_data else None

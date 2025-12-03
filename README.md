@@ -97,6 +97,7 @@ The API exposes helper endpoints so you can pull and inspect model assets direct
 | `POST /api/models/ollama/pull` | Trigger an Ollama pull operation for the requested model name. |
 | `POST /api/models/nim/search` | Query the NVIDIA NGC catalog for NIM deployments (requires an NGC API key). |
 | `POST /api/models/nim/pull` | Run `docker pull` against `nvcr.io` using the supplied NGC API key. |
+| `POST /api/models/ngc/cli` | Use the NGC CLI to pull a checkpoint into the model cache and generate configs for llama.cpp, Ollama, sglang, and vLLM (TensorRT-LLM optional). |
 | `POST /api/models/huggingface/search` | Search the Hugging Face model hub using an optional HF API token. |
 | `POST /api/models/huggingface/download` | Download a gated model snapshot into the backend's model cache directory. |
 | `GET /api/models/runtimes` | Inspect which models are currently marked as running across providers. |

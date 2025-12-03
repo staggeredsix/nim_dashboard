@@ -171,6 +171,20 @@ class HuggingFaceDownloadRequest(BaseModel):
     local_dir: Optional[str] = Field(default=None, description="Override the download destination directory")
 
 
+class NgcCliModelRequest(BaseModel):
+    api_key: str = Field(description="NGC API key used by the NGC CLI")
+    pull_command: str = Field(description="Full NGC CLI command to download the model")
+    model_name: str = Field(description="Local name for the downloaded model")
+    enable_trt_llm: bool = Field(
+        default=False,
+        description="Toggle the TensorRT-LLM pipeline for supported backends",
+    )
+    backends: List[str] = Field(
+        default_factory=lambda: ["llamacpp", "ollama", "sglang", "vllm"],
+        description="Backends that should be configured for the downloaded model",
+    )
+
+
 class ModelActionResponse(BaseModel):
     status: str
     detail: str
