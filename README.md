@@ -106,6 +106,18 @@ The API exposes helper endpoints so you can pull and inspect model assets direct
 
 Supply API keys in the request body when required. The frontend surfaces these flows under the new "Model management" section.
 
+### Installing the NGC CLI locally
+
+The backend can orchestrate NGC CLI downloads when `ngc` is available on the host. A helper script installs the CLI into
+`/usr/local/bin/ngc`:
+
+```bash
+./scripts/install_ngc_cli.sh
+```
+
+The script expects `unzip` to be available and may require `sudo` privileges to write to `/usr/local/bin`. Override the
+download location by setting `NGC_CLI_URL` if you mirror the archive internally.
+
 ## Testing
 
 ```bash
