@@ -175,3 +175,33 @@ async def test_setup_ngc_cli_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     assert response.status == "completed"
     assert response.metadata["nvfp4_available"] is True
     assert (tmp_path / "demo-model" / "llamacpp_config.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_setup_ngc_cli_model_invalid_binary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    settings = Settings(model_cache_dir=str(tmp_path))
+    service = ModelRegistryService(settings)
+
+    async def _fake_run_command(cmd: Any, *args: Any, **kwargs: Any) -> str:
+        if cmd == ["/usr/local/bin/ngc", "--version"]:
+            raise HTTPException(
+                status_code=500,
+                detail="Command /usr/local/bin/ngc --version failed: /usr/local/bin/ngc: 2: Syntax error: '(' unexpected",
+            )
+        raise AssertionError("ngc download should not run when CLI validation fails")
+
+    monkeypatch.setattr("app.model_registry.shutil.which", lambda _: "/usr/local/bin/ngc")
+    monkeypatch.setattr("app.model_registry._run_command", _fake_run_command)
+
+    with pytest.raises(HTTPException) as excinfo:
+        await service.setup_ngc_cli_model(
+            NgcCliModelRequest(
+                api_key="token",
+                pull_command="ngc registry model download org/model",
+                model_name="demo-model",
+                enable_trt_llm=False,
+                backends=["llamacpp"],
+            )
+        )
+
+    assert "could not be executed" in str(excinfo.value.detail)
