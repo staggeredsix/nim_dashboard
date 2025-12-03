@@ -109,14 +109,14 @@ Supply API keys in the request body when required. The frontend surfaces these f
 ### Installing the NGC CLI locally
 
 The backend can orchestrate NGC CLI downloads when `ngc` is available on the host. A helper script installs the CLI into
-`/usr/local/bin/ngc`:
+`/usr/local/bin/ngc` and picks the correct archive for common CPU architectures (x86_64 or arm64):
 
 ```bash
 ./scripts/install_ngc_cli.sh
 ```
 
 The script expects `unzip` to be available and may require `sudo` privileges to write to `/usr/local/bin`. Override the
-download location by setting `NGC_CLI_URL` if you mirror the archive internally.
+download location by setting `NGC_CLI_URL` if you mirror the archive internally or need a different platform build.
 
 ## Testing
 
